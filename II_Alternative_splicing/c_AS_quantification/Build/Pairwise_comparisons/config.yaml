@@ -1,0 +1,82 @@
+#Genome_fasta : /lustre/scratch117/cellgen/team218/gp7/Genome/mm10/mm10.fa
+Genome_fasta : /lustre/scratch117/cellgen/team218/gp7/Genome/GRCm38/GRCm38.fa
+#Gene_anontation_bed12 : /lustre/scratch117/cellgen/team218/gp7/Genome/mm10/Tracks/Gene_annotation/gencode.vM16.annotation.bed12
+GT_AG_U2_5 : /lustre/scratch117/cellgen/team218/MH/MicroExonator/PWM/Mouse/mm10_GT_AG_U2_5.good.matrix
+GT_AG_U2_3 : /lustre/scratch117/cellgen/team218/MH/MicroExonator/PWM/Mouse/mm10_GT_AG_U2_3.good.matrix
+#conservation_bigwig : /lustre/scratch117/cellgen/team218/gp7/Genome/mm10/Tracks/Phylop/mm10.60way.phyloP60way.bw
+conservation_bigwig : NA
+working_directory : /lustre/scratch117/cellgen/team218/gp7/Micro-exons/Runs/Paper/MicroExonator/
+#ME_DB : /lustre/scratch117/cellgen/team218/gp7/Genome/mm10/Tracks/Gene_annotation/VastDb.bed12
+ME_DB : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/VastDb.Parada2020.txt
+
+ME_len : 30
+Optimize_hard_drive : F
+min_number_files_detected : 2
+#paired_samples : /lustre/scratch117/cellgen/team218/gp7/Micro-exons/Runs/Paper/paired.tsv
+min_reads_PSI : 5
+max_read_len : 240
+min_conservation : 2
+skip_mixture_model_filter : T
+whippet_flags : --circ --stranded
+
+skip_TE_TS : F
+
+n_pseudo_bulks : 200
+Keep_fastq_gz : T
+
+skip_discovery : T
+
+# Whippet
+
+downstream_only : T
+#whippet_bin_folder : /lustre/scratch117/cellgen/team218/gp7/miniconda/envs/julia_0.6.1/share/julia/site/v0.6/Whippet/bin
+whippet_bin_folder : /nfs/users/nfs_g/gp7/Whippet.jl/bin
+#Gene_anontation_GTF : /lustre/scratch117/cellgen/team218/gp7/Joe/RNA_seq_snakepipes/gffcompare/extended_ref_annotation.manual_filter.gtf
+#Gene_anontation_GTF : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Report/out.high_quality.gene_merged.3exons.gtf
+#Gene_anontation_GTF : /lustre/scratch117/cellgen/team218/gp7/Genome/GRCm38/Tracks/Gene_annotation/Mus_musculus.GRCm38.99.gtf
+
+Gene_anontation_GTF : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Report/out.high_quality.calibrated.gtf
+
+Only_whippet : T
+
+### Single cell  ###
+
+Only_snakepool : T
+#GTF : /lustre/scratch117/cellgen/team218/gp7/Micro-exons/Software/Micro-Exonator_Final/Whippet/out_filtered_ME.no_chrM.gtf
+#whippet_bin_folder : /lustre/scratch117/cellgen/team218/gp7/miniconda/envs/julia/share/julia/site/v0.6/Whippet/bin
+#samtools : /lustre/scratch117/cellgen/team218/gp7/miniconda/envs/g4/bin/samtools
+
+
+cluster_metadata : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/umap_NoRegressedAnnotations.tsv
+cluster_name : leiden
+file_basename : cell
+
+Get_Bamfiles : T
+#cluster_metadata : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/cluster_metadata_BAM.tsv
+#cluster_name : cell_type_simple
+#file_basename : cell
+
+## Lantent_time
+
+#cluster_metadata : "/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/heart_specif_Cardio_E85_latent_time.grep.txt"
+#cluster_name : Frac
+#file_basename : barcode
+
+#cluster_metadata : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/cluster_annotation.pools.tsv
+
+run_metadata : /lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/run_metadata.tsv
+#fastq_path : /lustre/scratch117/cellgen/team218/gp7/Micro-exons/Software/Micro-Exonator_Final/data/fastq/
+#Get_Bamfiles : T
+Single_Cell : T
+cluster_sashimi : F
+min_number_of_reads_single_cell : 5
+min_number_of_samples_single_cell : 2
+
+#whippet_delta : /lustre/scratch117/cellgen/team218/gp7/Micro-exons/Runs/Paper/MicroExonator/whippet_delta.FINAL.yaml
+
+
+cdf_t : 0.8
+min_rep : 25
+min_p_mean : 0.9
+min_delta : 0.2
+snakepool_seed : 123

@@ -1,0 +1,250 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library("drawProteins")
+
+
+library(ggplot2)
+library(data.table)
+
+```
+
+
+
+```{r}
+# accession numbers of rel A
+    drawProteins::get_features("A0A087WSF5") ->
+    rel_json
+```
+
+
+```{r}
+drawProteins::feature_to_dataframe(rel_json) -> rel_data
+rel_data <- data.table(rel_data)
+
+rel_data[type=="COILED", description:="Coiled"]
+```
+
+
+```{r}
+
+prot <- "A0A087WPK3 Q3UZ39"
+rel_json <- drawProteins::get_features(prot)
+rel_data <- drawProteins::feature_to_dataframe(rel_json)
+
+rel_data <- data.table(rel_data)
+rel_data[type=="COILED", description:="Coiled"]
+```
+# Lrrfip1
+
+
+```{r, fig.width=12, fig.height=5}
+
+prot <- "A0A087WPK3 Q3UZ39"
+rel_json <- drawProteins::get_features(prot)
+rel_data <- drawProteins::feature_to_dataframe(rel_json)
+
+rel_data <- data.table(rel_data)
+rel_data[type=="COILED", description:="Coiled"]
+
+
+draw_canvas(rel_data) -> p
+p <- draw_chains(p, rel_data, label_size = 2.5)
+p <- draw_domains(p, rel_data, label_domains = FALSE)
+p <- draw_regions(p, rel_data)
+p <- draw_motif(p, rel_data)
+
+
+#p <- draw_recept_dom(p, rel_data)
+#p <- draw_folding(p, rel_data)
+p <- draw_domains(p, rel_data, type = "COILED", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "COMPBIAS", label_domains = FALSE)
+
+p <- draw_phospho(p, rel_data, size = 8) 
+p <- draw_phospho(p, rel_data, size = 8) 
+
+p <- p + theme_bw(base_size = 20) + # white backgnd & change text size
+    theme(panel.grid.minor=element_blank(), 
+        panel.grid.major=element_blank()) +
+    theme(axis.ticks = element_blank(), 
+        axis.text.y = element_blank()) +
+    theme(panel.border = element_blank())
+p + theme(legend.position = "top" )
+```
+
+# Ank1
+
+
+
+
+```{r, fig.width=12, fig.height=5}
+
+prot <- "Q02357 E9QNT8"
+rel_json <- drawProteins::get_features(prot)
+rel_data <- drawProteins::feature_to_dataframe(rel_json)
+
+rel_data <- data.table(rel_data)
+rel_data[type=="COILED", description:="Coiled"]
+
+
+draw_canvas(rel_data) -> p
+p <- draw_chains(p, rel_data, label_size = 2.5)
+p <- draw_domains(p, rel_data, label_domains = FALSE)
+p <- draw_regions(p, rel_data)
+p <- draw_motif(p, rel_data)
+
+
+#p <- draw_recept_dom(p, rel_data)
+#p <- draw_folding(p, rel_data)
+p <- draw_domains(p, rel_data, type = "COILED", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "COMPBIAS", label_domains = FALSE)
+
+p <- draw_phospho(p, rel_data, size = 8) 
+
+
+p <- p + theme_bw(base_size = 20) + # white backgnd & change text size
+    theme(panel.grid.minor=element_blank(), 
+        panel.grid.major=element_blank()) +
+    theme(axis.ticks = element_blank(), 
+        axis.text.y = element_blank()) +
+    theme(panel.border = element_blank())
+p + theme(legend.position = "top" )
+```
+
+
+# Epb41
+
+
+```{r}
+rel_data[]
+```
+
+
+```{r, fig.width=12, fig.height=5}
+
+prot <- "P48193 F7BUB8"
+rel_json <- drawProteins::get_features(prot)
+rel_data <- drawProteins::feature_to_dataframe(rel_json)
+
+rel_data <- data.table(rel_data)
+rel_data[type=="COILED", description:="Coiled"]
+
+
+draw_canvas(rel_data) -> p
+p <- draw_chains(p, rel_data, label_size = 2.5)
+p <- draw_domains(p, rel_data, label_domains = FALSE)
+p <- draw_regions(p, rel_data)
+p <- draw_motif(p, rel_data)
+
+
+#p <- draw_recept_dom(p, rel_data)
+#p <- draw_folding(p, rel_data)
+p <- draw_domains(p, rel_data, type = "COILED", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "COMPBIAS", label_domains = FALSE)
+
+p <- draw_phospho(p, rel_data, size = 8) 
+
+
+p <- p + theme_bw(base_size = 20) + # white backgnd & change text size
+    theme(panel.grid.minor=element_blank(), 
+        panel.grid.major=element_blank()) +
+    theme(axis.ticks = element_blank(), 
+        axis.text.y = element_blank()) +
+    theme(panel.border = element_blank())
+p + theme(legend.position = "top" )
+```
+
+# Add1
+
+
+```{r, fig.width=12, fig.height=5}
+
+prot <- "Q9QYC0 E9Q1K3"
+rel_json <- drawProteins::get_features(prot)
+rel_data <- drawProteins::feature_to_dataframe(rel_json)
+
+rel_data <- data.table(rel_data)
+rel_data[type=="COILED", description:="Coiled"]
+
+
+draw_canvas(rel_data) -> p
+p <- draw_chains(p, rel_data, label_size = 2.5)
+p <- draw_domains(p, rel_data, label_domains = FALSE)
+p <- draw_regions(p, rel_data)
+p <- draw_motif(p, rel_data)
+
+
+#p <- draw_recept_dom(p, rel_data)
+#p <- draw_folding(p, rel_data)
+p <- draw_domains(p, rel_data, type = "COILED", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "COMPBIAS", label_domains = FALSE)
+
+p <- draw_phospho(p, rel_data, size = 8) 
+
+
+p <- p + theme_bw(base_size = 20) + # white backgnd & change text size
+    theme(panel.grid.minor=element_blank(), 
+        panel.grid.major=element_blank()) +
+    theme(axis.ticks = element_blank(), 
+        axis.text.y = element_blank()) +
+    theme(panel.border = element_blank())
+p + theme(legend.position = "top" )
+```
+
+#Mnbl1
+
+
+```{r, fig.width=12, fig.height=3}
+
+prot <- "Q9JKP5"
+rel_json <- drawProteins::get_features(prot)
+rel_data <- drawProteins::feature_to_dataframe(rel_json)
+
+rel_data <- data.table(rel_data)
+rel_data[type=="COILED", description:="Coiled"]
+rel_data[type=="ZN_FING", description:="Zinc finger"]
+
+
+rel_data <- rbind(rel_data, list("Paper", "NLS",	270, 308, 38, 'Q9JKP5', 'MBNL1_MOUSE', 10090, 1))
+
+
+draw_canvas(rel_data) -> p
+p <- draw_chains(p, rel_data, label_size = 2.5)
+p <- draw_domains(p, rel_data, label_domains = FALSE)
+p <- draw_regions(p, rel_data)
+p <- draw_motif(p, rel_data)
+
+
+#p <- draw_recept_dom(p, rel_data)
+#p <- draw_folding(p, rel_data)
+p <- draw_domains(p, rel_data, type = "COILED", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "COMPBIAS", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "ZN_FING", label_domains = FALSE)
+p <- draw_domains(p, rel_data, type = "Paper", label_domains = FALSE)
+
+
+
+p <- draw_phospho(p, rel_data, size = 8) 
+
+
+p <- p + theme_bw(base_size = 20) + # white backgnd & change text size
+    theme(panel.grid.minor=element_blank(), 
+        panel.grid.major=element_blank()) +
+    theme(axis.ticks = element_blank(), 
+        axis.text.y = element_blank()) +
+    theme(panel.border = element_blank())
+p + theme(legend.position = "top" )
+```
+
+```{r}
+
+
+dim(rel_data)
+
+length(c("ZN_FING", "NLS",	270, 308, 38, 'Q9JKP5', 'MBNL1_MOUSE', 10090, 1))
+```
+

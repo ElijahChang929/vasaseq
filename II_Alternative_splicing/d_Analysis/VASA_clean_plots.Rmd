@@ -1,0 +1,438 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("ggrepel")
+```
+
+
+#Paper Figures
+
+```{r, fig.height=7, fig.width=24}
+
+
+
+plot_grid(fig6.a, fig6.bc, nrow=1, rel_widths = c(10,14), labels = c("A", ""))
+
+```
+
+
+
+#Shiny plots
+
+
+```{r}
+diff_results <- merge(cluster_names, pseudopool_matrix.zscore.hits.filter , by="cluster")
+diff_results[ cell_type=="Allantois", ]
+
+table(diff_results$cell_type)
+```
+
+
+```{r, fig.width=13, fig.height=7}
+
+
+
+visualise_marker_VASA('10:108267421-108268569')
+
+```
+
+
+```{r}
+heart.total.sig[order(cdf.beta),  ][1:10, Coord]
+```
+
+
+```{r}
+node_vector <- gsub('chr', '',  heart.total.sig[order(cdf.beta),  ][1:10, ][order(DeltaPsi.mean)]$Coord)
+```
+
+
+```{r, fig.width=13, fig.height=13}
+visualise_marker_VASA_facet(c( '5:34629139-34629172',
+                               '5:113163058-113163351',
+                               "10:25501578-25501631",
+                               '4:139365186-139365194',
+                               "19:8784892-8785121",
+                               '16:94408554-94408716'
+                               ))
+
+visualise_marker_VASA_facet(node_vector)
+
+```
+
+```{r}
+pdf("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Plots/TPM1_A.pdf") 
+```
+
+```{r}
+dev.off() 
+```
+
+
+
+
+```{r}
+SN_total_cov <- pseudopool_matrix.PAGA[ , .(Total_reads=sum(SN_Reads)) , by="Coord"]
+
+
+```
+
+
+
+```{r}
+Blood_total[diff==T & Coord %in% SN_total_cov[Total_reads>=500, Coord], ]
+```
+
+
+```{r}
+total_diff[diff==TRUE &  toupper(mgi_symbol) %in% splicing_regulation, .(Coord, Type, diff_type, mgi_symbol) ][ order(Coord)]
+```
+
+```{r}
+ total_diff[diff==TRUE &  toupper(mgi_symbol) %in% splicing_regulation, .(mgi_symbol, diff_type, Coord, Node, Type, DeltaPsi.mean, cdf.beta, diff_name, diff_type) ][order(Coord)]
+total_diff[diff==TRUE   , .(mgi_symbol, diff_type, Coord, Node, Type, DeltaPsi.mean, cdf.beta, diff_name, diff_type) ][order(-abs(DeltaPsi.mean))]
+
+total_diff
+```
+
+
+```{r, fig.width=5, fig.height=4}
+
+
+node = "11:77815856-77815891"
+#node = '9:67032466-67032541'
+#node = '15:77091812-77091854'
+
+ggplot() +
+     geom_segment(data=PAGA_net, aes(x=`0.x`, y=`1.x`, xend = `0.y`, yend = `1.y`, size=value), colour="grey" ) + 
+  geom_point(data=pseudopool_matrix.zscore.PAGA_graph[Coord==node, ], aes(`0`, `1`, colour=PSI, size=log(n_cells)), position = position_jitter(w = 0.17, h = 0.17), alpha=0.5 ) +
+  #geom_text(data=PAGA_graph_position, aes(`0`, `1`, label=cluster)) +
+  scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") + 
+  scale_size( range = c(0.01, 4)) +
+  theme_void() +
+     theme(legend.position = "none") 
+
+ggplot() +
+  geom_point(data=PAGA, aes(FA1, FA2), colour="grey", alpha=0.05) +
+  geom_point(data=pseudopool_matrix.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(SN_Reads) ), alpha=0.5 ) +
+   scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+#ggplot() +
+#  geom_point(data=PAGA, aes(FA1, FA2), colour="grey", alpha=0.02) +
+#  geom_point(data=pseudopool_matrix.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI ), alpha=0.2 ) +
+#   scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+#  theme_bw() +
+#  theme(legend.position = "top")
+
+
+vert <- pseudopool_matrix.zscore.PAGA[Coord==node,  .(FA1=mean(FA1, rm.na=T), FA2=mean(FA2, rm.na=T)) , by=c("cluster", "Coord")]
+
+edges <- merge(PAGA_net[ , .(Var1=as.character(Var1), Var2=as.character(Var2), value)], vert, by.x='Var1', by.y='cluster')
+edges <- merge(edges, vert, by.x='Var2', by.y='cluster')
+
+
+
+
+ggplot() +
+  
+        geom_point(data=vert, aes(FA1, FA2)) +
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+        geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+                theme_bw() +  
+      geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), 
+    box.padding = unit(0.5, 'lines'),
+    point.padding = 0.3,
+                label=vert.names$cluster )  +
+
+     scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) + 
+
+        theme(legend.position = "none") 
+
+```
+
+
+
+
+
+
+
+
+```{r, fig.height=7, fig.width=7}
+
+ggplot() +
+  
+        geom_point(data=vert, aes(FA1, FA2)) +
+  
+  
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+      geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), 
+    box.padding = unit(0.5, 'lines'),
+                label=vert.names$cluster )  +
+        geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=cluster, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+                theme_bw() +
+    # scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) + 
+
+        theme(legend.position = "none") 
+```
+
+
+```{r}
+cell_annotations.anna
+```
+
+# Vulcano plots
+
+```{r}
+ FHFvsPHT <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/comparisons_gene_expression/27vs32.csv")
+FHFvsPHT[, c("Gene","Gene_class") := data.table(str_split_fixed(V1,"-",2)) ]
+
+splicing_regulation
+
+FHFvsPHT[toupper(Gene) %in% splicing_regulation & p_val_adj<0.05 & abs(avg_logFC)<0.1, ][order(-abs(avg_logFC))]
+
+```
+
+```{r}
+    box.padding = unit(1, 'lines'),
+     point.padding = 0.5,
+    segment.size=0.2,
+    max.overlaps=Inf,
+    segment.linetype="dashed",
+```
+
+
+
+
+
+
+```{r, fig.height=4, fig.width=6}
+fig7.a <- ggplot() +
+
+  geom_point(data=FHFvsPHT[! (abs(avg_logFC)>=0.2 & p_val_adj<=0.05) ] , aes(-avg_logFC, -log10(p_val_adj)), colour="grey" ) +
+  geom_point(data=FHFvsPHT[ (abs(avg_logFC)>=0.2 & p_val_adj<=0.05) ] , aes(-avg_logFC, -log10(p_val_adj)), colour="black" ) +
+  theme_bw() +
+  xlim(c(-2,2)) +
+  geom_text_repel(data = FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<0.05 & avg_logFC>=0.2, ],
+                colour="firebrick", aes(-avg_logFC, -log10(p_val_adj)), 
+                nudge_x      = -1,
+                box.padding = 2.5,
+                 max.overlaps = Inf,
+                direction    = "y",
+                #angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<0.05 & avg_logFC>=0.2, Gene] )  +
+  
+  
+    geom_text_repel(data = FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<0.05 & avg_logFC<=-0.2, ],
+                colour="firebrick", aes(-avg_logFC, -log10(p_val_adj)), 
+                nudge_x      = 1,
+                box.padding = 2.5,
+                 max.overlaps = Inf,
+                direction    = "y",
+                #angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<0.05 &  avg_logFC<=-0.2, Gene] ) 
+
+fig7.a
+```
+
+
+
+
+
+```{r, fig.height=4, fig.width=6}
+fig7.a2 <- ggplot() +
+
+  geom_point(data=FHFvsPHT[! (abs(avg_logFC)>=0.5 & p_val_adj<=0.05) ] , aes(-avg_logFC, -log10(p_val_adj)), colour="grey" ) +
+  geom_point(data=FHFvsPHT[ (abs(avg_logFC)>=0.5 & p_val_adj<=0.05) ] , aes(-avg_logFC, -log10(p_val_adj)), colour="black" ) +
+  theme_bw() +
+  xlim(c(-2,2)) +
+  geom_text_repel(data = FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<=0.05 & avg_logFC>=0.01, ],
+                colour="firebrick", aes(-avg_logFC, -log10(p_val_adj)), 
+                nudge_x      = -1,
+                box.padding = 2.5,
+                 max.overlaps = Inf,
+                direction    = "y",
+                #angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<=0.05 & avg_logFC>=0.01, Gene] )  +
+  
+  
+    geom_text_repel(data = FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<=0.05 & avg_logFC<=-0.01, ],
+                colour="firebrick", aes(-avg_logFC, -log10(p_val_adj)), 
+                nudge_x      = 1,
+                box.padding = 2.5,
+                 max.overlaps = Inf,
+                direction    = "y",
+                #angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT[Gene!="Adar" & toupper(Gene) %in% splicing_regulation & p_val_adj<=0.05 &  avg_logFC<=-0.01, Gene] ) 
+
+fig7.a2
+```
+
+
+```{r}
+
+
+ FHFvsPHT.sn <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Delta/Single_Cell/Sig_nodes/PAGA/FirstHeart_vs_Primitive.txt")
+
+FHFvsPHT.sn[ is.na(cdf.beta) & Probability.mean==1 & Probability.var==0, `:=`(diff=TRUE, cdf.beta=0)]
+
+FHFvsPHT.sn[ ,cdf.beta:= (cdf.beta + 1e-110 )]
+
+
+
+gene_table <- data.table(getBM(attributes=c('ensembl_gene_id', "mgi_symbol"),filters = 'ensembl_gene_id', values = unique(FHFvsPHT.sn$Gene) , mart = ensembl_mm))
+
+FHFvsPHT.sn.gene <- merge(FHFvsPHT.sn, gene_table[ , .(Gene=ensembl_gene_id, mgi_symbol)], by="Gene")
+
+```
+
+
+```{r}
+FHFvsPHT.sn.gene[diff==TRUE][ order(-abs(DeltaPsi.mean))]
+```
+
+
+```{r}
+fig7.b <- ggplot() +
+
+  geom_point(data=FHFvsPHT.sn.gene[! diff==TRUE ] , aes(-DeltaPsi.mean, -log10(cdf.beta)), colour="grey" ) +
+  geom_point(data=FHFvsPHT.sn.gene[ diff==TRUE ] , aes(-DeltaPsi.mean, -log10(cdf.beta)), colour="black" ) +
+  theme_bw() +
+  ylim(c(0, 110)) +
+  xlim(c(-1,1))+
+    
+  
+    geom_text_repel(data = FHFvsPHT.sn.gene[diff==TRUE][ order(abs(cdf.beta))][ 1:20],
+                colour="firebrick", aes(-DeltaPsi.mean, -log10(cdf.beta + 1e-110)), 
+                nudge_y      = 6,
+                box.padding = 0.6,
+                #point.padding = 5,
+                #box.padding = 2.5,
+                 max.overlaps = Inf,
+                #direction    = "x",
+                #angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT.sn.gene[diff==TRUE][ order(abs(cdf.beta))][ 1:20][, paste(mgi_symbol, Node, sep="_")] ) 
+
+fig7.b
+```
+
+
+```{r}
+fig7.b2 <- ggplot() +
+
+  geom_point(data=FHFvsPHT.sn.gene[! diff==TRUE ] , aes(-DeltaPsi.mean, -log10(cdf.beta)), colour="grey" ) +
+  geom_point(data=FHFvsPHT.sn.gene[ diff==TRUE ] , aes(-DeltaPsi.mean, -log10(cdf.beta)), colour="black" ) +
+  
+  geom_point(data= FHFvsPHT.sn.gene[diff==TRUE & mgi_symbol %in% c("Tpm1", "Rbfox2", "Lrrfip1", "Ttn")],  
+             aes(-DeltaPsi.mean, -log10(cdf.beta), colour=mgi_symbol), size=2.5 )  +
+  
+ 
+  
+  theme_bw() +
+  ylim(c(0, 110)) +
+  xlim(c(-1,1)) +
+  
+theme(legend.position = "top")
+    
+  
+fig7.b2
+```
+
+```{r}
+FHFvsPHT.sn.gene[diff==TRUE & mgi_symbol %in% c("Tpm1", "Rbfox2", "Lrrfip1", "Ttn")]
+```
+
+
+```{r}
+ggplot() +
+
+  geom_point(data=FHFvsPHT.sn.gene[! diff==TRUE ] , aes(-DeltaPsi.mean, -log10(cdf.beta)), colour="grey" ) +
+  geom_point(data=FHFvsPHT.sn.gene[ diff==TRUE ] , aes(-DeltaPsi.mean, -log10(cdf.beta)), colour="black" ) +
+  theme_bw() +
+  ylim(c(0, 110)) +
+    
+  geom_text_repel(data = FHFvsPHT.sn.gene[diff==TRUE][ order(abs(cdf.beta))][ 1:15],
+                colour="firebrick", aes(-DeltaPsi.mean, -log10(cdf.beta)), 
+                #nudge_y      = 15,
+                box.padding = 0.7,
+                 max.overlaps = Inf,
+                #direction    = "x",
+                #angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT.sn.gene[diff==TRUE][ order(abs(cdf.beta))][ 1:15][, mgi_symbol] ) 
+
+```
+
+
+
+
+```{r}
+ggplot() +
+
+  geom_point(data=FHFvsPHT.sn.gene[! diff==TRUE ] , aes(-DeltaPsi.mean, Probability.mean), colour="grey" ) +
+  geom_point(data=FHFvsPHT.sn.gene[ diff==TRUE ] , aes(-DeltaPsi.mean, Probability.mean), colour="black" ) +
+  theme_bw() +
+  
+  ylim(c(0.5, 1.2)) +
+    
+  geom_text_repel(data = FHFvsPHT.sn.gene[diff==TRUE][ order(-abs(DeltaPsi.mean))][ 1:10],
+                colour="firebrick", aes(-DeltaPsi.mean, Probability.mean), 
+                nudge_y      = 0.2,
+                #box.padding = 2.5,
+                 max.overlaps = Inf,
+                direction    = "x",
+                angle        = 90,
+                #vjust        = 1,
+                 fontface='bold',
+                label=FHFvsPHT.sn.gene[diff==TRUE][ order(-abs(DeltaPsi.mean))][ 1:10][, paste(mgi_symbol, Node, sep="_") ] ) 
+```
+
+
+```{r}
+gene_multiple_nodes <- FHFvsPHT.sn.gene[ diff==T , .N,by="mgi_symbol"][N>=2, ][order(N)]$ mgi_symbol
+
+gene_multiple_nodes.bar_plot <-  rbind(FHFvsPHT.sn.gene[DeltaPsi.mean<0 & mgi_symbol  %in% gene_multiple_nodes & diff==T, .N,by="mgi_symbol"], 
+      FHFvsPHT.sn.gene[DeltaPsi.mean>0 & mgi_symbol  %in% gene_multiple_nodes & diff==T, .N,by="mgi_symbol"][ , .(mgi_symbol, N=-N)])
+
+gene_multiple_nodes.bar_plot$mgi_symbol <- factor(gene_multiple_nodes.bar_plot$mgi_symbol, levels = gene_multiple_nodes)
+```
+
+
+
+```{r, fig.height= 4, fig.width= 8}
+
+
+
+fig7.c <- ggplot(gene_multiple_nodes.bar_plot) +
+  geom_bar(aes(mgi_symbol, N, fill=(N>0)), stat="identity" ) +
+  theme_bw() +
+  ylab("Number of DISNs") +
+  xlab("") +
+  theme( axis.text.x = element_text(angle = 90, hjust=0.95,vjust=0.2), legend.position = "none")
+
+fig7.c
+  
+```
+
+
+```{r, fig.height= 4.55, fig.width= 14.3}
+plot_grid( fig7.a, fig7.b, fig7.c +  coord_flip(), nrow=1, rel_widths = c(2,2,1), labels = c("B", "C", "D") )
+```
+

@@ -1,0 +1,582 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+ save(PAGA_net,
+      pseudopool_matrix.zscore.PAGA_graph,
+      pseudopool_matrix.zscore.PAGA,
+      pseudopool_matrix.PAGA,
+      PAGA,
+      file = '/lustre/scratch117/cellgen/team218/gp7/Joe/Jupyter/PAGA.rda') 
+
+
+```
+
+```{r}
+load("/lustre/scratch117/cellgen/team218/gp7/Joe/Jupyter/pseudopool_matrix_data.rda")
+load("/lustre/scratch117/cellgen/team218/gp7/Joe/Jupyter/PAGA.rda")
+```
+
+
+```{r}
+library(data.table)
+library(tseries)
+library(ggplot2)
+library(ggrepel)
+```
+
+```{r}
+total_node_reads <- pseudopool_matrix[ , .(node_reads=sum(as.numeric(Total_Reads), na.rm = T)), by="Coord"]
+
+total_diff.high_cov <- merge(total_node_reads[node_reads>2000, ], total_diff[ diff=="TRUE", ], by="Coord")
+total_diff.high_cov[ , .(mgi_symbol, Coord, node_reads, Node, Type, diff_name) ][order(Coord)]
+```
+
+```{r}
+
+```
+
+
+```{r}
+library(tseries)
+
+PAGA_graph_connectivities.melted <-data.table(PAGA_graph_connectivities.melted)
+
+PAGA_graph_connectivities.melted[Var1=='23' & Var2=='0',]
+
+PAGA_graph_connectivities <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/PAGA")
+
+PAGA_graph_connectivities <- read.matrix("/lustre/scratch117/cellgen/team218/gp7/Joe/PAGA", header = T, sep = ",")
+PAGA_graph_connectivities <- PAGA_graph_connectivities[ ,2:ncol(PAGA_graph_connectivities) ]
+
+PAGA_graph_connectivities.melted <- melt(PAGA_graph_connectivities)
+PAGA_graph_connectivities.melted$Var1 <- as.character(PAGA_graph_connectivities.melted$Var1)
+PAGA_graph_connectivities.melted$Var2 <- as.character(PAGA_graph_connectivities.melted$Var2)
+
+PAGA_graph_connectivities.melted <- data.table(PAGA_graph_connectivities.melted)
+
+PAGA_graph_connectivities.melted$value <-as.numeric(PAGA_graph_connectivities.melted$value)
+
+```
+
+```{r}
+save(/lustre/scratch117/cellgen/team218/gp7/Joe/PAGA/)
+```
+
+
+```{r}
+PAGA.old <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/PAGA_coordinates.csv")
+PAGA.new <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/PAGA_graph_single_cell_coordinates.csv", header=T)
+
+PAGA <- cbind(PAGA.old, PAGA.new[ , c(2,3)])
+
+PAGA[ ,`:=`(FA1=`0`,FA2=`1` )  ]
+
+path_PSI_matrix_files <- "/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Quant/Collapsed/No_NA/"
+files <- list.files(path=path_PSI_matrix_files, pattern = "*psi.tsv.gz" , recursive = F)
+
+pseudopool_matrix <- rbindlist(lapply(paste0(path_PSI_matrix_files, files), fread), idcol = "origin")
+pseudopool_matrix <- pseudopool_matrix[Sample!="Sample", V1:=basename(Sample)]
+pseudopool_matrix.PAGA <- merge(pseudopool_matrix, PAGA, by="V1")
+
+pseudopool_matrix.PAGA[, `:=`(PSI=as.numeric(Psi), SN_Reads=as.numeric(Total_Reads) )]
+
+```
+
+
+```{r}
+library(RColorBrewer)
+
+PAGA.new
+```
+
+
+
+```{r, fig.width=7, fig.height=7}
+
+
+
+
+ggplot() +
+  geom_point(data=PAGA, aes(FA1, FA2), colour="grey", alpha=0.05) +
+  theme(legend.position = "top")
+
+```
+
+
+```{r, fig.width=7, fig.height=7}
+
+
+node = "9:67029664-67029742"
+
+
+ggplot() +
+  geom_point(data=PAGA, aes(FA1, FA2), colour="grey", alpha=0.05) +
+  geom_point(data=pseudopool_matrix.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(SN_Reads) ), alpha=0.5 ) +
+   scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+  theme_bw() +
+  theme(legend.position = "top")
+```
+
+
+```{r}
+pseudo_bulk_membership <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Heatmap/Pseudo_bulks/pseudo_bulk_membership.tsv")
+pseudo_bulk_membership.melt <- pseudo_bulk_membership[, c(sample=strsplit(samples, ",")), by=pseudo_bulk_ID]
+```
+
+
+
+
+
+```{r}
+pseudo_bulk_membership <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Heatmap/Pseudo_bulks/pseudo_bulk_membership.tsv")
+pseudo_bulk_membership.melt <- pseudo_bulk_membership[, c(sample=strsplit(samples, ",")), by=pseudo_bulk_ID]
+
+pseudopool_matrix.PAGA.pseudopool <-  merge(pseudo_bulk_membership.melt, PAGA, by.x="sample", by.y="V1")
+
+
+pseudopool_matrix.PAGA.pseudopool.stats <- pseudopool_matrix.PAGA.pseudopool[ , .(FA1=mean(FA1,  rm.na=T), FA2=mean(FA2, rm.na=T) ), by="pseudo_bulk_ID" ]
+
+
+pseudopool_matrix.zscore.PAGA <- merge(pseudopool_matrix.zscore, pseudopool_matrix.PAGA.pseudopool.stats, by.x="pool_ID", by.y="pseudo_bulk_ID")
+```
+
+```{r}
+pseudopool_matrix.zscore.PAGA.stats <- pseudopool_matrix.zscore.PAGA[Coord==node,  .(PSI=mean(PSI, rm.na=T)) , by=c("cluster", "Coord")]
+```
+
+```{r}
+PAGA_graph_connectivities.melted$value <- as.numeric(as.character(PAGA_graph_connectivities.melted$value))
+
+PAGA_graph_connectivities.melted[value==0, ]
+
+is.data.table(PAGA_graph_connectivities.melted)
+```
+
+```{r}
+node="15:77091812-77091854"
+```
+
+
+```{r, fig.width=7, fig.height=7}
+pseudopool_matrix.zscore.PAGA
+
+pseudopool_matrix.zscore.PAGA[ , `:=`(n_cells=.N, SN_Reads=sum(as.numeric(Total_Reads)), rm.na=T), by="pool_ID"]
+
+pseudopool_matrix.zscore.PAGA[, `:=`(PSI=as.numeric(Psi)  )]
+
+
+
+
+vert <- pseudopool_matrix.zscore.PAGA[Coord==node,  .(FA1=mean(FA1, rm.na=T), FA2=mean(FA2, rm.na=T)) , by=c("cluster", "Coord")]
+
+
+
+edges <- merge(PAGA_net[ , .(Var1=as.character(Var1), Var2=as.character(Var2), value)], vert, by.x='Var1', by.y='cluster')
+edges <- merge(edges, vert, by.x='Var2', by.y='cluster')
+
+
+
+
+ggplot() +
+  
+        geom_point(data=vert, aes(FA1, FA2)) +
+  
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+        geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+                theme_bw() +
+     scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) +
+        theme(legend.position = "top")
+
+
+
+
+```
+
+
+
+
+```{r}
+
+
+colnames(PAGA_graph_connectivities.melted) <- c("Var1", "Var2", "value")
+PAGA_graph_connectivities.melted$Var1 <- str(PAGA_graph_connectivities.melted$Var1)
+PAGA_graph_connectivities.melted$Var2 <- str(PAGA_graph_connectivities.melted$Var2)
+
+PAGA_graph_connectivities.melted$Var2 <- as.numeric(as.character(PAGA_graph_connectivities.melted$Var2 ))
+
+
+PAGA_net <- merge(PAGA_graph_connectivities.melted[value>0.05 ], PAGA_graph_position, by.x='Var1', by.y='cluster')
+PAGA_net <- merge(PAGA_net, PAGA_graph_position, by.x='Var2', by.y='cluster')
+
+
+pseudopool_matrix.zscore.PAGA_graph <- merge(  pseudopool_matrix.zscore,  PAGA_graph_position[ , .(cluster=as.character(cluster), `0`, `1` )], by="cluster")
+
+pseudopool_matrix.zscore.PAGA_graph[ , `:=`(n_cells=.N, SN_Reads=sum(as.numeric(Total_Reads)), rm.na=T), by="pool_ID"]
+pseudopool_matrix.zscore.PAGA_graph[, `:=`(PSI=as.numeric(Psi)  )]
+ 
+```
+
+```{r}
+PAGA_net
+```
+
+
+```{r}
+edges[  Var2==0 & Var1==23, ]
+
+```
+
+
+
+```{r}
+
+
+node = "9:67029664-67029742"
+
+
+
+
+ggplot() +
+     geom_segment(data=PAGA_net, aes(x=`0.x`, y=`1.x`, xend = `0.y`, yend = `1.y`, size=value), colour="grey" ) + 
+  geom_point(data=pseudopool_matrix.zscore.PAGA_graph[Coord==node, ], aes(`0`, `1`, colour=PSI, size=log(n_cells)), position = position_jitter(w = 0.2, h = 0.2), alpha=0.5 ) +
+  #geom_text(data=PAGA_graph_position, aes(`0`, `1`, label=cluster)) +
+  scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") + 
+  scale_size( range = c(0.01, 4)) +
+     theme_bw() 
+```
+
+
+
+
+```{r}
+library(igraph)
+
+g = read.graph("a-network.gml", format="gml")
+
+#get the node coordinates
+plotcord <- data.frame(layout.fruchterman.reingold(g))
+colnames(plotcord) = c("X1","X2")
+
+#get edges, which are pairs of node IDs
+edgelist <- get.edgelist(g)
+
+#convert to a four column edge data frame with source and destination coordinates
+edges <- data.frame(plotcord[edgelist[,1],], plotcord[edgelist[,2],])
+colnames(edges) <- c("X1","Y1","X2","Y2")
+
+ggplot() + geom_segment(aes(x=X1, y=Y1, xend = X2, yend = Y2), data=edges, size = 0.5, colour="grey") + geom_point(aes(X1, X2), data=plotcord)
+```
+
+
+#### General view
+
+
+```{r}
+
+ggplot(pseudopool_matrix.zscore.PAGA[Coord==node, ]) +
+        geom_point(aes(FA1, FA2, colour=cluster, size=log(n_cells)), position = position_jitter(w = 3e3, h = 3e3), alpha=0.5 ) +
+                theme_bw() +
+     #scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+        theme(legend.position = "none") 
+```
+
+
+
+```{r, fig.height=7, fig.width=7}
+library("ggrepel")
+
+ggplot() +
+  
+        geom_point(data=PAGA, aes(FA1, FA2, colour=batch), alpha=0.2) +
+  #      geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+                theme_bw() +
+  #   scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+        theme(legend.position = "top") 
+```
+
+```{r}
+gene_count <- fread('~/VASA/gene_TMP.3read_count.txt')
+total_genes <- unique(gene_count$Gene)
+
+total_genes.gene_table <- data.table(getBM(attributes=c('ensembl_gene_id', "mgi_symbol"),filters = 'ensembl_gene_id', values = total_genes , mart = ensembl_mm))
+
+gene_count <- merge(gene_count, total_genes.gene_table, by.x="Gene", by.y="ensembl_gene_id")
+
+total_genes.gene_table[ mgi_symbol %in% c( "Rbfox2", "Mbnl1", "Mbnl2", "Ptbp1", "Ptbp2", "Nova1", "Dnmt3b", "Camk2a"), ]
+
+
+```
+
+
+
+```{r}
+total_genes.gene_table[ mgi_symbol %in% c( "Rbfox2", "Mbnl1", "Mbnl2", "Ptbp1", "Ptbp2", "Nova1", "Dnmt3b", "Camk2a", "Qki", "Hnrnpc", "Hnrnpf", "Espr1"), ]
+```
+
+```{r}
+total_genes.gene_table[  toupper(mgi_symbol)   %in% RBP_annotation[`Splicing regulation`==1]$...1]
+total_genes.gene_table[  mgi_symbol=="Srrm4", ]
+
+```
+
+
+```{r, fig.height=16, fig.width=10}
+#Good
+#Elavl2
+#Msi1
+
+#Bad
+#Ptbp2
+
+gene_vector <- c("Mbnl1", "Elavl2", "Rbfox2", "Rbm24", "Msi1", "Esrp1")
+#gene_vector <- c("Elavl2", "Celf4", "Msi1", "Srrm4", "Elavl3", "Elavl1")
+
+
+#gene_vector <- c("Mbnl1", "Ptbp2", "Rbfox2", "Rbm24", "Ptbp3", "Esrp1")
+
+PAGA.genes <- merge( gene_count[mgi_symbol %in%  gene_vector,] , PAGA[ ,.(cell=V1, FA1, FA2)], by="cell", all.y=T  )
+
+#PAGA.genes$cell <- factor( PAGA.genes$cell, levels= PAGA.genes[order(TpM)]$cell)
+
+
+ggplot() +
+        geom_point(data=PAGA, aes(FA1, FA2), color="lightgray", alpha=0.1) +  
+        geom_point(data=PAGA.genes[!is.na(mgi_symbol) & !is.na(TpM), ][order(TpM)], aes(FA1, FA2, colour=log10(TpM)), alpha=0.2) +
+  #      geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+  
+  facet_wrap(. ~ mgi_symbol, ncol=2) +
+                theme_classic() +
+     scale_colour_gradient2(low = "steelblue", midpoint = 2, mid = "lightskyblue3", high = "firebrick", na.value = "gray40", limits=c(0,4)) +
+          theme(legend.position = "top", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank())  +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        )
+```
+
+
+
+
+```{r, fig.height=30, fig.width=30}
+
+#Mbnl1 ENSMUSG00000027763
+#Ptbp2 ENSMUSG00000028134
+#Rbfox2 ENSMUSG00000033565
+#Hnrnpll ENSMUSG00000024095
+#Ptbp3 ENSMUSG00000028382
+
+
+PAGA.genes <- merge( gene_count[ toupper(mgi_symbol)   %in% RBP_annotation[`Splicing regulation`==1]$...1,] , PAGA[ ,.(cell=V1, FA1, FA2)], by="cell", all.y=F  )
+
+#PAGA.genes$cell <- factor( PAGA.genes$cell, levels= PAGA.genes[order(TpM)]$cell)
+
+
+ggplot() +
+        geom_point(data=PAGA.genes[is.na(TpM), ], aes(FA1, FA2), color="lightgray", alpha=0.1) +  
+        geom_point(data=PAGA.genes[!is.na(TpM), ][order(TpM)], aes(FA1, FA2, colour=log10(TpM)), alpha=0.2) +
+  #      geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+  
+  facet_wrap(. ~ mgi_symbol, ncol=10) +
+                theme_bw() +
+     scale_colour_gradient2(low = "steelblue", midpoint = 2, mid = "lightskyblue3", high = "firebrick", na.value = "gray40", limits=c(0,4)) +
+        theme(legend.position = "top") 
+```
+
+
+```{r}
+cell_annotations.anna <-  fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/umap_NoRegressedAnnotations.tsv")
+head(cell_annotations.anna)
+```
+
+
+
+
+```{r}
+cluster_names <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/Jupyter/cluster_names.tvs")
+cluster_names$cluster <- as.character(cluster_names$cluster) 
+
+vert.names <- merge(vert, cluster_names, by="cluster")
+
+
+```
+
+
+```{r, fig.width=14, fig.height=9}
+
+
+    
+
+ggplot() +
+  
+    geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, size=log(n_cells), color=cluster), position = position_jitter(w = 3e3, h = 3e3), alpha=0.5 ) +  
+          geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+
+xlab("FoceAtlas1") +
+  ylab("FoceAtlas2") +
+                  theme_bw() +
+    scale_size( range = c(0.01, 4)) +
+        theme(legend.position = "none") +
+  
+            geom_text(data=vert.names, aes(FA1, FA2, label=cluster, ),fontface='bold', colour="black", size=5)  +
+    geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), 
+    box.padding = unit(0.8, 'lines'),
+    point.padding = 0.8,
+    size =4.5, 
+                label=vert.names$cell_type )  
+  
+
+```
+
+
+```{r}
+
+
+vert.names[cluster %in% c("34", "32", "27", "28", "32"), Class:="Cardiac"]
+vert.names[cluster %in% c("23", "0", "23", "36", "39" ) ,  Class:="Erythroid"]
+vert.names[cluster %in% c("6", "13", "30"),  Class:="Spinal Coord"]
+vert.names[cluster %in% c("9", "10", "12" ),  Class:="Brain"]
+vert.names[cluster %in% c("14", "21" ),  Class:="Neural crest"]
+vert.names[cluster %in% c("4", "11", "18", "24", "29"   ),  Class:="Epiblast"]
+vert.names[cluster %in% c("19" ),  Class:="Extra embryonic"]
+vert.names[cluster %in% c("3", "5", "35"), Class:="Mesoderm"]
+vert.names[cluster %in% c("25"), Class:="Endoderm"]
+
+vert.names[  is.na(Class), Class:="Other"]
+```
+
+
+
+```{r, fig.width=10, fig.height=7}
+
+fig6.a <- ggplot() +
+          geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+
+xlab("FoceAtlas1") +
+  ylab("FoceAtlas2") +
+                  theme_bw() +
+    scale_size( range = c(0.01, 2)) +
+        theme(legend.position = "top") +
+    geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), size=2.7, 
+    box.padding = unit(1, 'lines'),
+     point.padding = 0.5,
+    segment.size=0.2,
+    max.overlaps=Inf,
+    segment.linetype="dashed",
+                label=vert.names$cell_type )  +
+  
+          geom_text(data=vert.names, aes(FA1, FA2, label=cluster, colour=Class ),
+
+
+                    fontface='bold', size=4) 
+
+fig6.a
+```
+
+
+
+
+
+```{r}
+library("ggrepel")
+
+ggplot()+
+  geom_point(data=total_diff, aes(-DeltaPsi.mean, Probability.mean), alpha=0.1, colour="grey" ) +
+  geom_point(data=total_diff[ diff==TRUE, ], aes(-DeltaPsi.mean, Probability.mean, size=-log10(cdf.beta), color=Type), alpha=0.5) +
+  ylab("Mean Probability") + 
+   xlab("Mean dPSI") +
+   # facet_grid(. ~ diff_name) +
+  facet_wrap(~   diff_type + diff_name) +
+  theme_bw() +
+  scale_color_manual (values=gg_color_hue(9), drop=F) +
+ theme(legend.position = "top")  +
+  ylim(0.5, 1.25) +
+  
+#  geom_text_repel(data = total_diff[diff==TRUE &  toupper(mgi_symbol) %in% interesting_genes, ],
+ #               colour="black", aes(-DeltaPsi.mean, Probability.mean), 
+  #              nudge_y      = 0.07,
+   #             direction    = "x",
+    #            angle        = 90,
+     #           vjust        = 1,
+      #          segment.size = 0.1,
+       #         max.overlaps  = Inf,
+        #        label=total_diff[diff==TRUE &  toupper(mgi_symbol) %in% interesting_genes , mgi_symbol] ) 
+
+  
+  geom_text_repel(data = total_diff[diff==TRUE &  toupper(mgi_symbol) %in% splicing_regulation, ],
+                colour="black", aes(-DeltaPsi.mean, Probability.mean), 
+                nudge_y      = 0.07,
+                direction    = "x",
+                angle        = 90,
+                vjust        = 1,
+                segment.size = 0.1,
+                label=total_diff[diff==TRUE &  toupper(mgi_symbol) %in% splicing_regulation , mgi_symbol] ) 
+```
+
+
+
+
+#Final PAGA
+
+
+```{r}
+vert.names$Class <- factor(vert.names$Class, levels=c("Brain", "Cardiac",  "Epiblast","Endoderm", "Erythroid", "Spinal Coord",  "Mesoderm", "Neural crest", "Other", "Extra embryonic")) 
+```
+
+
+```{r, fig.width=6.0904, fig.height=4.2892}
+annotations + theme(legend.position = "none") + scale_size_continuous(range = c(0.01, 0.5))
+```
+
+
+```{r}
+gg_color_hue(10)
+
+
+color_paga <- c("#F8766D", "#D89000", "#A3A500", "#39B600", "#00BF7D", "#00BFC4", "#00B0F6", "#9590FF", "#010101", "#FF62BC")
+
+color_paga <- replace(gg_color_hue(10, x="#E76BF3",  values='#010101'))
+```
+
+
+
+```{r, fig.width=, fig.height=5}
+
+annotations <- ggplot() +
+          geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+
+xlab("ForceAtlas1") +
+  ylab("ForceAtlas2") +
+                  theme_bw() +
+    scale_size( range = c(0.01, 2)) +
+  
+     theme_classic() + 
+        theme(legend.position = "top") +
+    geom_text_repel(data = vert.names.final, colour="black", aes(FA1, FA2), size=2.7, 
+    box.padding = unit(1, 'lines'),
+     point.padding = 0.5,
+    segment.size=0.2,
+    max.overlaps=Inf,
+    segment.linetype="dashed",
+                label=vert.names.final$cell_type )  +
+  
+          geom_text(data=vert.names, aes(FA1, FA2, label=manual_clusters, colour=Class ),
+                    fontface='bold', size=4)  +
+    theme(
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        ) +
+   scale_color_manual (values=color_paga) 
+
+annotations
+
+```

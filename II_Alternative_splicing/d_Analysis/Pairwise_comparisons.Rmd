@@ -1,0 +1,818 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(data.table)
+library(stringi)
+
+library(stringr)
+library(UpSetR)
+library(ComplexUpset)
+
+
+library(ComplexUpset)
+library(ggplot2)
+
+```
+
+
+
+```{r}
+run_medatada <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/run_metadata.tsv")
+run_medatada[ , .(Compare_ID, A.cluster_names, B.cluster_names)]
+```
+
+Thophectoderm_Epiblast
+SecondHeart_vs_Primitive
+Primitive_vs_Outflow
+ReichertMembrane_vs_ViseralEndoderm
+Early_gastrulation_VE
+
+
+```{r}
+path_diff <- "/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Delta/Single_Cell/Sig_nodes/"
+diff_files <- list.files(path=path_diff, pattern = "*.txt" )
+
+total_delta <- rbindlist(lapply(paste0(path_diff, diff_files), fread), idcol = "origin")
+total_delta[, file := factor(origin, labels = basename(diff_files))]
+total_delta[, Compare_ID:=str_replace(file, ".txt", "")]
+
+
+total_delta <- merge(total_delta, run_medatada[ , .(Compare_ID, A.cluster_names, B.cluster_names)], by="Compare_ID")
+
+#total_delta <- total_delta[Compare_ID!="Total_brain_spinal_vs_Total_epiblast_expanded_paga_2"  &
+ #                            Compare_ID!="Thophectoderm_Epiblast"  &
+#                           Compare_ID!="Primitive_vs_Outflow"  &
+#                           Compare_ID!="ReichertMembrane_vs_ViseralEndoderm"  &
+#                           Compare_ID!="Early_gastrulation_VE" & 
+#                              Compare_ID!="ReichertMembrane_vs_Trophectoderm" &
+#                             Compare_ID!="ReichertMembrane_vs_Trophectoderm" & 
+#                             Compare_ID!="LPM_endothelium"  ]
+
+
+total_delta <- total_delta[Compare_ID %in% run_medatada$Compare_ID, ]
+
+
+total_delta[ (Probability.mean)==1 & is.na(cdf.beta) & Probability.var==0 & Number>40, `:=`(diff="TRUE", Diff=1) ]
+
+#fwrite(total_delta[ diff=="TRUE" & cdf.beta<1e-5  , .N ,  by="Gene"], quote=F, sep="\t", file="/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Delta/Single_Cell/Sig_nodes/total_delta.genes.tsv")
+
+```
+
+
+
+
+```{r}
+
+unique(total_delta$Compare_ID)
+
+length(unique(total_delta[diff=="TRUE", Coord]))
+
+total_delta[ diff=="TRUE" , .N ,  by="Gene"]
+cat(total_delta[ diff=="TRUE" & cdf.beta<1e-5 , .N ,  by="Gene"]$Gene, sep="\n")
+```
+
+
+```{r}
+run_medatada[  , Compare_class:="Pairwise"]
+run_medatada[ like(A.cluster_names, ",") | like(B.cluster_names, ",") , Compare_class:="Composed"]
+
+total_delta.stats <- total_delta[diff=="TRUE" , .N , by="Compare_ID" ]
+
+run_medatada.stats <- merge( run_medatada, total_delta.stats, by="Compare_ID")
+
+run_medatada.stats <- run_medatada.stats[ , .(Compare_ID, A.cluster_names, B.cluster_names, N, rank=frank(-N, ties.method="first")), by="Compare_class"]
+
+run_medatada.stats[ Compare_class=="Pairwise", Compare_code:=paste0("P", rank)]
+run_medatada.stats[ Compare_class=="Composed", Compare_code:=paste0("C", rank)]
+
+
+ run_medatada.stats[ , .(Compare_ID, A.cluster_names, B.cluster_names, N, rank=frank(-N, ties.method="first")), by="Compare_class"]
+ 
+
+compare_names <- run_medatada.stats$Compare_code
+names(compare_names) <- run_medatada.stats$Compare_ID
+
+```
+
+#Numbers for paper
+
+```{r}
+included_comparisons <- run_medatada[Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors", Compare_ID]
+included_comparisons 
+
+length(unique(total_delta[Compare_ID %in% included_comparisons & diff==T, Coord]))
+
+table(unique(total_delta[Compare_ID %in% included_comparisons & diff==T, .(Coord, Type )])$Type)
+
+449/979
+
+top_compare_IDs <- run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  , ][order(-N)]$Compare_ID[1:15]
+
+
+length(unique(total_delta[Compare_ID %in% included_comparisons & diff==T & Compare_ID %in% top_compare_IDs, Coord]))
+
+662/979
+
+total_delta
+
+table(total_delta[Compare_ID=="ExE_TE_vs_PaE" & diff=="TRUE", Type])
+
+nrow(total_delta[Compare_ID %in% included_comparisons & diff=="TRUE", .N, by="Coord"][N==1])
+
+
+total_delta[Compare_ID %in% included_comparisons & diff==T, .(Coord, Compare_ID) ][ , .N , by="Coord"][N==1]
+
+length(unique(total_delta[Compare_ID %in% included_comparisons & diff==T, Coord]))
+
+
+673/979
+
+22/54
+
+length(unique(total_delta[Compare_ID %in% included_comparisons & diff==T & Coord %in% SNMs , Coord])) / length(SNMs)
+
+```
+
+
+
+```{r}
+total_delta[ diff=="TRUE", .N, by="Compare_ID"]
+total_delta[ , Diff:=as.numeric(diff)]
+total_delta[ , Compare_code:=compare_names[Compare_ID] ]
+total_delta.upsetr <- dcast(total_delta[diff=="TRUE"], Coord ~ Compare_code, value.var="diff", fill=FALSE, fun.aggregate=last )
+
+
+run_medatada.stats[Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors", ][order(-N)]$Compare_code[  1:15]
+
+#filtered_compares <- total_delta[diff=="TRUE", .N, by="Compare_code"][order(-N)]$Compare_code[1:20]
+
+
+filtered_compares <- run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  , ][order(-N)]$Compare_code[  1:15]
+
+total_delta.upsetr <- merge(total_delta.upsetr,  unique(total_delta[, .(Coord, Type)]), by="Coord")
+```
+
+Calculating the total amount of nodes that are differentially included
+
+```{r}
+
+length(unique(total_delta[diff=="TRUE" & Compare_ID %in% run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  ,  Compare_ID], Compare_ID]))
+
+length(unique(total_delta[diff=="TRUE" & Compare_ID %in% run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  ,  Compare_ID], Coord]))
+
+
+diff_nodes <- unique(total_delta[diff=="TRUE" & Compare_ID %in% run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  ,  Compare_ID], .(Coord, Type)])
+ 
+
+ diff_nodes[ , .N, by="Type"]
+ 
+ 
+ length(unique(total_delta[diff=="TRUE" & Compare_code %in% filtered_compares & Compare_ID %in% run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  ,  Compare_ID], Coord]))
+ 
+ 
+View( total_delta[diff=="TRUE"  & Compare_code %in% filtered_compares &  Compare_ID %in% run_medatada.stats[(Compare_class=="Pairwise" | Compare_ID=="blood_all_batches_vs_progenitors") & Compare_code!="P9"  ,  Compare_ID], .(Coord, Type, Compare_code)][ , .N, by=c("Type", "Compare_code")][ order(Compare_code, -N)])
+ 
+```
+
+
+```{r}
+total_delta.type_stats <- total_delta[ diff=="TRUE", .N , by=c("Coord", "Type")][ , .N , by="Type"]
+
+total_diff_number <- total_delta.type_stats[ , sum(N)]
+
+total_delta.type_stats[ , percetage:=(N*100/total_diff_number)]
+```
+
+
+```{r}
+total_delta.type_stats <- total_delta[ diff=="TRUE" & Compare_code %in% filtered_compares, .N , by=c("Compare_code", "Type")]
+
+
+total_delta.type_stats
+
+total_delta.type_stats[ , `:=`(rank=frank(-N, ties.method="first"),  Total=sum(N)) , by=c("Compare_code") ]
+
+
+total_delta.type_stats[ , Percentage:=(N*100/Total)]
+
+total_delta.type_stats[rank==1, ]
+total_delta.type_stats[Type=="RI", ]
+```
+
+
+
+```{r}
+length(unique(total_delta[diff=="TRUE" & Compare_code %in% filtered_compares, Coord]))
+```
+
+
+```{r}
+#total_delta.upsetr[, ..cols_filter ]
+
+#which(rowSums(total_delta.upsetr[ , ..filtered_compares])==0)
+
+#total_delta.upsetr[ which(rowSums(total_delta.upsetr[ , ..filtered_compares])==0), Other:="TRUE" ]
+#total_delta.upsetr[ which(rowSums(total_delta.upsetr[ , ..filtered_compares])>0), Other:="FALSE" ]
+
+
+
+```
+
+
+
+
+
+```{r, fig.height=5, fig.width=8.5}
+
+
+
+ordered_sets <- c(
+  rev(run_medatada.stats[Compare_class=="Composed"  & Compare_code %in% filtered_compares, ][ order( c(rank) )]$Compare_code),  
+  rev(run_medatada.stats[Compare_class=="Pairwise" & Compare_code %in% filtered_compares, ][ order( c(rank) )]$Compare_code)
+
+)
+
+
+
+
+total_delta.upsetr$Type <-  factor( total_delta.upsetr$Type, levels=c( "AA", "AD", "AF", "AL", "BS", "CE", "RI", "TE", "TS") )
+
+
+
+upset.2 <- upset(    total_delta.upsetr,
+    ordered_sets,
+    n_intersections=30,
+    min_size=5,    
+    min_degree=1,
+    width_ratio=0.2,
+    height_ratio=1.5,
+
+    
+        matrix=(
+        intersection_matrix(
+            geom=geom_point(
+                shape=rep(c( rep('triangle', 7 ), rep('circle', 8)), 405/15),
+                size=3.5
+           ))),
+
+
+    sort_intersections_by=c('degree') ,
+
+
+    set_sizes=(
+        upset_set_size(
+            geom=geom_bar(
+                aes(fill=Type, x=group, ),
+                width=0.8
+            )  ,
+            position='left',
+        )), 
+
+
+    
+    name='Intersection of significant splicing nodes between pairwise comparsions',     sort_sets=FALSE)
+
+
+
+upset.2
+```
+
+
+
+
+
+```{r, fig.height=5, fig.width=8.5}
+
+
+
+ordered_sets <- c(
+  rev(run_medatada.stats[Compare_class=="Composed"  & Compare_code %in% filtered_compares, ][ order( c(rank) )]$Compare_code),  
+  rev(run_medatada.stats[Compare_class=="Pairwise" & Compare_code %in% filtered_compares, ][ order( c(rank) )]$Compare_code)
+
+)
+
+
+
+
+total_delta.upsetr$Type <-  factor( total_delta.upsetr$Type, levels=c( "AA", "AD", "AF", "AL", "BS", "CE", "RI", "TE", "TS") )
+
+
+
+upset.2 <- upset(    total_delta.upsetr,
+    rev(filtered_compares),
+    n_intersections=30,
+    min_size=5,    
+    min_degree=1,
+    width_ratio=0.2,
+    height_ratio=1,
+
+    
+        matrix=(
+        intersection_matrix(
+            geom=geom_point(
+                #shape=rep(c( rep('triangle', 7 ), rep('circle', 8)), 405/15),
+                size=3.5
+           ))),
+
+
+    sort_intersections_by=c('degree') ,
+
+
+    set_sizes=(
+        upset_set_size(
+            geom=geom_bar(
+                aes(fill=Type, x=group, ),
+                width=0.8
+            )  ,
+            position='left',
+        )), 
+
+
+    
+    name='Intersection of significant splicing nodes between pairwise comparsions',     sort_sets=FALSE)
+
+
+
+upset.2
+```
+
+
+
+
+
+
+```{r}
+#run_medatada.top[ , , by= c("Compare_ID", )]
+
+#cluster_names
+```
+
+
+
+```{r, fig.width=4, fig.height=3.5}
+
+#filtered_compares <- total_delta[diff=="TRUE", .N, by="Compare_code"][order(-N)]$Compare_code[1:15]
+
+
+
+run_medatada.top.A <-  run_medatada.stats[Compare_code %in% filtered_compares, .(Compare_ID, A.cluster_names, Compare_class, Compare_code) ][, .(Compare_code, Compare_class, cluster=strsplit(A.cluster_names, ',')[[1]]), Compare_ID]
+
+run_medatada.top.B <-  run_medatada.stats[Compare_code %in% filtered_compares, .(Compare_ID, B.cluster_names, Compare_class, Compare_code) ][, .(Compare_code, Compare_class, cluster=strsplit(B.cluster_names, ',')[[1]]), Compare_ID]
+
+run_medatada.top <- rbind(
+run_medatada.top.A[, .(Compare_ID, Compare_code, cluster, Compare_class, side="A")],
+run_medatada.top.B[, .(Compare_ID, Compare_code, cluster, Compare_class, side="B")])
+
+
+
+cell_axis <- c(39, 0, 36 , 23, 7, 15, 40, 34, 28, 17, 32, 27, 31, 3, 5, 35, 16, 1, 18, 2, 6, 13, 30, 9, 10, 12, 14, 21, 24, 11, 29, 8, 25, 20, 33, 19, 37, 26, 41, 4, 38, 22)
+
+run_medatada.top$cluster <- factor(run_medatada.top$cluster, levels=cell_axis)
+
+run_medatada.top$Compare_code <- factor(run_medatada.top$Compare_code, levels=rev(filtered_compares))
+
+
+
+
+
+run_medatada.top[cluster %in% c("34", "32", "27", "28", "32"), Class:="Cardiac"]
+run_medatada.top[cluster %in% c("23", "0", "23", "36", "39" ) ,  Class:="Erythroid"]
+run_medatada.top[cluster %in% c("6", "13", "30"),  Class:="Spinal Coord"]
+run_medatada.top[cluster %in% c("9", "10", "12" ),  Class:="Brain"]
+run_medatada.top[cluster %in% c("14", "21" ),  Class:="Neural crest"]
+run_medatada.top[cluster %in% c("4", "11", "18", "24", "29"   ),  Class:="Epiblast"]
+run_medatada.top[cluster %in% c("19" ),  Class:="Extra embryonic"]
+run_medatada.top[cluster %in% c("3", "5", "35"), Class:="Mesoderm"]
+run_medatada.top[cluster %in% c("25"), Class:="Endoderm"]
+
+run_medatada.top[  is.na(Class), Class:="Other"]
+
+run_medatada.top$Compare_class <- factor(run_medatada.top$Compare_class, levels=c("Pairwise", "Composed"))
+
+
+
+
+upset.1<- ggplot(run_medatada.top[cluster!=39 & cluster!=0]) +
+    geom_point(aes(cluster , Compare_code , colour=Class, shape=Compare_class), size=3) +
+  geom_line(aes(cluster , Compare_code , group=paste(side, Compare_ID)  ), size=0.5) +
+  theme_bw() +
+  #facet_wrap( . ~  Compare_class , drop = TRUE, scales = "free_y", ncol=1) +
+  theme(axis.text.x = element_text(angle = 90, hjust=0.95,vjust=0.2), legend.position="none") +
+  scale_x_discrete(breaks=final_clusters$leiden, labels=final_clusters$manual_leiden)
+
+upset.1
+
+```
+
+ 
+ 
+```{r}
+
+upset.1
+```
+ 
+ 
+
+```{r, fig.height=6, fig.width=13}
+library(cowplot)
+
+
+
+fig6.b <- plot_grid(upset.1, ggdraw(), ncol =1, rel_heights = c(1,1) )
+
+
+fig6.bc <- plot_grid(fig6.b, upset.2, nrow=1, rel_widths = c(1.5,3), labels = c("B", "C"))
+
+fig6.bc
+```
+
+
+```{r}
+total_delta.gene[grepl("Cask", mgi_symbol) ]
+
+total_delta.gene[Coord=="7:90182219−90182368",]
+
+total_delta.gene[ grepl("calmodulin", wikigene_description), .(Compare_ID, Coord, Type, mgi_symbol, wikigene_description )]
+```
+
+
+```{r}
+gene_table <- data.table(getBM(attributes=c('ensembl_gene_id', "mgi_symbol", "wikigene_description"),filters = 'ensembl_gene_id', values = total_delta[diff=="TRUE", ]$Gene , mart = ensembl_mm))
+
+
+
+total_delta.gene <-  merge(total_delta[diff=="TRUE", ], gene_table, by.x="Gene", by.y="ensembl_gene_id")
+
+
+pseudopool_matrix.zscore.hits.filter
+
+total_delta.gene[, .( Coord, Type, mgi_symbol, wikigene_description, Compare_ID, DeltaPsi.mean, cdf.beta)][order(cdf.beta)][mgi_symbol=="Pkc2"]
+
+total_delta.gene.zscore_hits.positive <-  merge(total_delta.gene, pseudopool_matrix.zscore.hits.filter.positive[, .(Coord, cluster, mean_zscore )], by="Coord")
+total_delta.gene.zscore_hits.negative <-  merge(total_delta.gene, pseudopool_matrix.zscore.hits.filter.negative[, .(Coord, cluster, mean_zscore )], by="Coord")
+
+
+
+total_delta.gene.zscore_hits.positive[ cluster %in% c(35) , .( Coord, Type, cluster, mgi_symbol, wikigene_description, Compare_ID, DeltaPsi.mean, cdf.beta, mean_zscore)][order(-mean_zscore)]
+
+total_delta.gene.zscore_hits.negative[cdf.beta<1e-5 & !cluster %in% c(36, 26, 0, 12,28) & !mgi_symbol %in% c("Rps24"), ][, .( Coord, Type, cluster, mgi_symbol, wikigene_description, Compare_ID, DeltaPsi.mean, cdf.beta, mean_zscore)][order(-mean_zscore)]
+
+
+
+
+
+
+total_delta.gene.zscore_hits.negative[, .( Coord, Type, cluster, mgi_symbol, wikigene_description, Compare_ID, DeltaPsi.mean, cdf.beta, mean_zscore)][order(cdf.beta)]
+```
+
+# Z-score
+
+
+
+## Positive
+
+9:69998248-69998306	CE	26	Bnip2
+cluster 26
+Necesary for normal gastrulation in zebrafish (https://scholarbank.nus.edu.sg/handle/10635/37723), but not much is know about this gene in the contex of development
+
+7:28909903-28909988	Actn4
+-Cluster 32
+-This is exon 8B
+-8b variant was restricted to the brain, spinal cord, skeletal and cardiac muscle, and smooth muscle-rich tissues (https://portlandpress.com/biochemj/article/452/3/477/46439/An-analysis-of-splicing-actin-binding-properties)
+
+
+
+11:94113263-94113301	CE	34	Spag9
+Cluster 34
+embryonic splice patterns in RNAs regulating cytoskeleton and sarcomere assembly and function including in hearts (https://www.nature.com/articles/srep09042)
+
+
+19:8756074-8757064	TE	37	Nxf1
+Cluster 37
+No aparent function in development
+this gene is key to mRNA export to the cytoplasm and functionally copuleed with SR proteins (http://genesdev.cshlp.org/content/30/5/553.short)
+The node represent an alternative promoter that is not annotated! Which leads to a longer 5'UTR
+
+5:146465850-146466019	CE	19	Wasf3	WASP family, member 3
+Cluster 19
+No found to be related with development, but its hihgly involved in cancer
+
+
+
+18:61580452-61580475	AD	41	Csnk1a1	casein kinase 1, alpha 1
+Cluster 41
+This gene is involved in control of selfnewal of epidermal progenitors (https://www.sciencedirect.com/science/article/pii/S1534580717306810)
+Its splicing its controlde by RBFOX1 https://academic.oup.com/hmg/article/21/19/4171/584744?login=true
+
+
+
+
+1:86351101-86351211	CE	36	Ncl	nucleolin
+Cluster 36
+This could be either an autentic intron retention or an snoRNA experssion
+
+
+12:113133541-113133576	CE	34	Mta1
+Both associated with Heart and blood
+Involved in the plurinet
+
+
+9:44342221-44342305	CE	0	Hmbs
+Cluster 0
+interesting blood function
+
+
+15:76195424-76195730	CE	7	Plec
+Cluster 7
+Strongly associated to 7
+Citoskeleton
+Involved in migration and ploriferation of mESC and related with calmodulin regulation
+https://www.liebertpub.com/doi/full/10.1089/scd.2013.0158?casa_token=LF96Ba4HM-YAAAAA%3AJ2jA4Wrcsp-N4GTYCkZve3WTFgoKfdycn7GOiUGwa9XMmQuCZ8wAhgbjfpD1gxTJBYKY_z7dD0NuEio
+
+
+7:90182219-90182368	CE	36	Picalm
+Cluster 36
+Essential for Erythroid maduration (https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0031854)
+Possible regulated by Mbnl1
+https://ashpublications.org/blood/article/124/4/598/33336/Muscleblind-like-1-Mbnl1-regulates-pre-mRNA
+
+
+7:130199807-130199905	CE	20	Fgfr2
+Related with plurinet
+Includes a Ig domain
+
+18:44573502-44574370	CE	19	Mcc	mutated in colorectal cancers
+Strong patterns associated to early gastrulation, blood and brain
+
+
+4:131937015-131937211	CE	33	Epb41
+Cluster 33
+This shows a pattern that is not related with blood, but rather with early gastrulation
+
+8:75016222-75016406	CE	29	Hmgxb4	HMG box domain containing 4
+Cluster 29 and 19
+Splicing of this gene is regulated by hgRNPLL during exit of pluripotency
+https://www.embopress.org/doi/full/10.15252/embj.2020104729?casa_token=0r_Ejo4NLP4AAAAA%3A3NDrPk4JbK12mCyQ7ZvX9nZpq0HsggmxZb9L-AVE50L2CjsRrhICzGinx-pnEN6zndA4kesJ_e6i
+
+
+
+## Negative:
+
+7:28909903-28909988	Actn4
+Cluster 32
+-Exon 8A which is mutually exclusive with 8B
+
+17:69207870-69207885	AA	26	Epb41l3
+
+
+14:24495430-24495432 + 14:24495433-24495449	Rps24
+-Cluster 36
+Co-excluded in blood and early gastrulation
+This exon skipping lead to an alternative end of this proteing
+Alternative splicing changes have already been reported to affect this gene after hipoxia treatement (https://rnajournal.cshlp.org/content/26/3/361.full)
+This exon have been already shown that is regulated during iPSC differentiation using scRNA-seq analyses and PCR validations (https://www.sciencedirect.com/science/article/pii/S1097276517304057)
+-Rps7, Rpsa and Rpl27a are other ribosomal proteins that have significant events
+
+10:62340013-62340542	CE	0	Hk1
+Cluster 0
+This is included as result of an alternative promoter, which can lead to hide a mitocondria binding domain, that is embeded on a disordered region.
+
+12:101926087-101926207	CE	26	Atxn3	ataxin 3
+This splicing event involves a novel exon!!
+
+14:52316043-52316100	Sall2 
+-Cluster 12
+- Strongly excluded in neuroectoderm. 
+-Plurinet
+- Transcription factor that seems relevant for eye development.
+- Required for Neural tube close: https://www.sciencedirect.com/science/article/pii/S0002944010615313?casa_token=Dc_Fs4h1AQ8AAAAA:0ldwbT1t16rgO8IVAByNEIc9nLT1Yka_1pjJhPb7rQhctciovi5o-FNlvt1ZfHO1uc1OsUM3Zg
+
+
+12:80170686-80170766	CE	28	Actn1
+Cluster 28
+Skiping of a calcium binding domain!
+
+
+16:23112351-23112409	CE	34	Eif4a2
+skipped on 34
+Impacts a translation initiation factor. Important be cause we found other AS on these factors.
+Introduce a codon stop
+
+
+# Global
+
+Mesoderm_vs_Neuroectoderm	18:60963600-60963922	AA	Camk2a	calcium/calmodulin-dependent protein kinase II alpha
+t change the interaction with BAALC, which it's embeded into a disordered region. Then also the signal peptide is afected, and this protein would not be translocated by the SRP to the ER... so it would not work a transmebrane protein at all.
+internal promoter
+
+
+2:153683608-153683677 /2:153684359-153684477	CE	Dnmt3b	DNA methyltransferase 3B
+-This gene is key to pluripotency
+
+14:31113849-31113945	CE	Pbrm1	polybromo 1
+-Present in PluriNetWork
+-Chromatin remodeler
+-Exon repressed in cardiomyocite and in blood
+-Exon affect a DNA binding motif
+
+X:94114196-94114263	CE	Zfx	zinc finger protein X-linked
+
+# RBP
+
+
+```{r, fig.height=4, fig.width=5}
+
+node= "18:60963600-60963922" 
+
+ggplot() +
+  
+        geom_point(data=vert, aes(FA1, FA2)) +
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+        geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+                theme_bw() +  
+      geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), 
+    box.padding = unit(0.5, 'lines'),
+    point.padding = 0.3,
+                label=vert.names$cluster )  +
+
+     scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) + 
+
+        theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank())  +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        )
+```
+
+
+
+```{r}
+run_medatada.AB <-  rbind(run_medatada.stats[ , .(Compare_ID, A.cluster_names, Compare_class, Compare_code) ][, .( cluster=strsplit(A.cluster_names, ',')[[1]]), Compare_ID],  run_medatada.stats[ , .(Compare_ID, B.cluster_names, Compare_class, Compare_code) ][, .( cluster=strsplit(B.cluster_names, ',')[[1]]), Compare_ID])
+
+
+ Coord_info<- total_delta.gene[, paste0(mgi_symbol, "-", Node)]
+ names(Coord_info) <- total_delta.gene$Coord
+
+unique(Coord_info)
+
+Coord_info["14:24495433-24495449"]
+```
+
+
+
+```{r, fig.height=3, fig.width=22}
+
+node_vector <- c("7:90182219-90182368",
+                 "15:76195424-76195730",
+       "7:28909903-28909988",
+       "4:131937015-131937211", 
+
+       "14:52316043-52316100",
+       "16:23112351-23112409",
+       "14:24495430-24495432"
+      )
+
+
+node_vector <- c( "18:60963600-60963922" , "14:31113849-31113945" )
+
+
+
+
+
+PSI_dots <- pseudopool_matrix.zscore.PAGA[Coord %in% node_vector, ]
+PSI_dots$Coord <- factor(PSI_dots$Coord, levels=node_vector)
+
+label_data <- do.call("rbind", replicate(7, vert.names, simplify = FALSE))
+label_data[,  Coord:=rep(node_vector, times = c(42,42,42,42,42,42,42))]
+
+accepted_labels <- total_delta[Coord %in% node_vector & diff=="TRUE", .(Compare_ID, Coord)]
+
+#accepted_labels <- merge(unique(accepted_labels), unique(run_medatada.AB), by="Compare_ID", allow.cartesian=TRUE)
+#label_data.filter <- label_data[paste(Coord, cluster) %in% unique(accepted_labels[ , paste(Coord, cluster)]), ]
+
+accepted_labels <- c(total_delta.gene.zscore_hits.positive[ , paste(Coord, cluster)], total_delta.gene.zscore_hits.negative[ , paste(Coord, cluster)])
+label_data.filter <- label_data[paste(Coord, cluster) %in% accepted_labels, ]
+
+
+label_data.filter$Coord <- factor(label_data.filter$Coord, levels=node_vector)
+
+
+ggplot() +
+       # geom_point(data=vert, aes(FA1, FA2)) +
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+        geom_point(data=PSI_dots, aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+
+                theme_classic() +  
+     geom_text_repel(data = label_data.filter, colour="black", aes(FA1, FA2), 
+    box.padding = unit(1.2, 'lines'),
+    point.padding = 0.5,
+    max.overlaps=Inf,
+                label=label_data.filter$cluster )  +
+
+     scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) + 
+  xlab("") +
+  ylab("") +
+
+    facet_grid(. ~ Coord, labeller = labeller(Coord = Coord_info)) +
+        theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank())  +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        )
+```
+
+
+
+```{r, fig.height=3.5, fig.width=11}
+
+
+
+
+node_vector <- c("2:153684359-153684477", "18:60963600-60963922", "2:153683608-153683677"   )
+
+
+
+
+
+PSI_dots <- pseudopool_matrix.zscore.PAGA[Coord %in% node_vector, ]
+PSI_dots$Coord <- factor(PSI_dots$Coord, levels=node_vector)
+
+label_data <- do.call("rbind", replicate(3, vert.names, simplify = FALSE))
+label_data[,  Coord:=rep(node_vector, times = c(42,42, 42))]
+
+accepted_labels <- total_delta[Coord %in% node_vector & diff=="TRUE", .(Compare_ID, Coord)]
+
+#accepted_labels <- merge(unique(accepted_labels), unique(run_medatada.AB), by="Compare_ID", allow.cartesian=TRUE)
+#label_data.filter <- label_data[paste(Coord, cluster) %in% unique(accepted_labels[ , paste(Coord, cluster)]), ]
+
+accepted_labels <- c(total_delta.gene.zscore_hits.positive[ , paste(Coord, cluster)], total_delta.gene.zscore_hits.negative[ , paste(Coord, cluster)])
+label_data.filter <- label_data[paste(Coord, cluster) %in% accepted_labels, ]
+
+
+label_data.filter$Coord <- factor(label_data.filter$Coord, levels=node_vector)
+
+
+ggplot() +
+       # geom_point(data=vert, aes(FA1, FA2)) +
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+        geom_point(data=PSI_dots, aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+
+                theme_classic() +  
+     geom_text_repel(data = label_data, colour="black", aes(FA1, FA2), 
+    box.padding = unit(0.4, 'lines'),
+    point.padding = 0.2,
+    max.overlaps=Inf,
+                label=label_data$cluster )  +
+
+     scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) + 
+  xlab("") +
+  ylab("") +
+
+    facet_grid( . ~ Coord , labeller = labeller(Coord = Coord_info)) +
+        theme(legend.position = "none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank())  +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        )
+
+```
+
+
+
+
+
+```{r}
+
+run_medatada.top
+```
+
+
+
+```{r}
+movies = as.data.frame(ggplot2movies::movies)
+genres = colnames(movies)[18:24]
+movies[genres] = movies[genres] == 1
+t(head(movies[genres], 3))
+movies[movies$mpaa == '', 'mpaa'] = NA
+movies = na.omit(movies)
+```
+
+
+

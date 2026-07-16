@@ -1,0 +1,159 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+if (!require(remotes)) {
+    install.packages("remotes")
+}
+remotes::install_github('jorvlan/raincloudplots')
+
+```
+
+```{r}
+library(raincloudplots)
+library(PupillometryR)
+```
+
+
+
+```{r}
+path_sc <- "/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Quant/Collapsed/No_NA/"
+files_sc <- list.files(path=path_sc, pattern = "*.psi.tsv.gz" )
+
+sc_matrix <- rbindlist(lapply(paste0(path_sc, files_sc), fread), idcol = "origin")
+sc_matrix[, cell := basename(Sample)  ]
+#sc_matrix[, pool_ID:=str_replace(file, ".psi.gz", "")]
+
+```
+
+
+
+```{r}
+single_cell_pseudo_pools <- rbind(sc_matrix[ , .(unit=cell, Coord , Total_Reads, class="single cell" )],
+pseudopool_matrix[ Total_Reads>=5, .(unit=pool_ID, Coord , Total_Reads, class="pseudo bulk" )])
+```
+
+```{r}
+fwrite(single_cell_pseudo_pools, quote=F, sep="\t", file="/lustre/scratch117/cellgen/team218/gp7/Joe/single_cell_pseudo_pools.supp.table")
+```
+
+```{r}
+
+```
+
+f
+
+```{r}
+ggplot(single_cell_pseudo_pools)+
+  geom_violin( aes(y=log10(as.numeric(Total_Reads)), x=class ), fill = class  )+
+  theme_bw()
+```
+
+
+```{r}
+ggplot(sample_n(single_cell_pseudo_pools, 10000),aes(x=class,y=as.numeric(Total_Reads), fill = class))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0),adjust = 2)+
+  geom_point(position = position_jitter(width = .15), size = .25)+
+  ylim(c(0, 200)) +
+  coord_flip()+
+  theme_cowplot()+
+    guides(fill = FALSE)
+
+```
+
+```{r}
+GeomSplitViolin <- ggproto("GeomSplitViolin", GeomViolin, 
+                           draw_group = function(self, data, ..., draw_quantiles = NULL) {
+  data <- transform(data, xminv = x - violinwidth * (x - xmin), xmaxv = x + violinwidth * (xmax - x))
+  grp <- data[1, "group"]
+  newdata <- plyr::arrange(transform(data, x = if (grp %% 2 == 1) xminv else xmaxv), if (grp %% 2 == 1) y else -y)
+  newdata <- rbind(newdata[1, ], newdata, newdata[nrow(newdata), ], newdata[1, ])
+  newdata[c(1, nrow(newdata) - 1, nrow(newdata)), "x"] <- round(newdata[1, "x"])
+
+  if (length(draw_quantiles) > 0 & !scales::zero_range(range(data$y))) {
+    stopifnot(all(draw_quantiles >= 0), all(draw_quantiles <=
+      1))
+    quantiles <- ggplot2:::create_quantile_segment_frame(data, draw_quantiles)
+    aesthetics <- data[rep(1, nrow(quantiles)), setdiff(names(data), c("x", "y")), drop = FALSE]
+    aesthetics$alpha <- rep(1, nrow(quantiles))
+    both <- cbind(quantiles, aesthetics)
+    quantile_grob <- GeomPath$draw_panel(both, ...)
+    ggplot2:::ggname("geom_split_violin", grid::grobTree(GeomPolygon$draw_panel(newdata, ...), quantile_grob))
+  }
+  else {
+    ggplot2:::ggname("geom_split_violin", GeomPolygon$draw_panel(newdata, ...))
+  }
+})
+
+geom_split_violin <- function(mapping = NULL, data = NULL, stat = "ydensity", position = "identity", ..., 
+                              draw_quantiles = NULL, trim = TRUE, scale = "area", na.rm = FALSE, 
+                              show.legend = NA, inherit.aes = TRUE) {
+  layer(data = data, mapping = mapping, stat = stat, geom = GeomSplitViolin, 
+        position = position, show.legend = show.legend, inherit.aes = inherit.aes, 
+        params = list(trim = trim, scale = scale, draw_quantiles = draw_quantiles, na.rm = na.rm, ...))
+}
+```
+
+
+
+```{r}
+
+sample <- sample_n(single_cell_pseudo_pools, 10000)
+
+sample[, x:="x"]
+
+ggplot(sample, aes(x=x,y=log10(as.numeric(Total_Reads)), fill = class)) +
+  geom_split_violin() +
+    theme_bw() +
+  ylim(c(log10(5),4)) +
+  coord_flip() +
+  ylab("Log10(Splicing node read coverage)") +
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        legend.position = "top") 
+
+```
+
+
+
+```{r}
+single_cell_pseudo_pools.stats <- single_cell_pseudo_pools[  unit!="Sample", .N  , by=c("class", "unit")]
+
+single_cell_pseudo_pools.stats[class=="pseudo bulk" ]
+```
+
+
+```{r}
+
+single_cell_pseudo_pools.stats[ ,x:="x"]
+
+ggplot(single_cell_pseudo_pools.stats, aes(x=x ,y=log10(N), fill = class) ) +
+  geom_split_violin() +
+    theme_bw() +
+  coord_flip() +
+  ylab(" log10 (Qunatified nodes)") +
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        legend.position = "top") 
+```
+
+
+
+```{r}
+single_cell_pseudo_pools.stats
+```
+
+
+```{r}
+single_cell_pseudo_pools <- sample
+```
+
+

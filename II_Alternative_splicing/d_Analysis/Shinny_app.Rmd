@@ -1,0 +1,319 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+fwrite(vert.names, quote=F, sep="\t", file="/lustre/scratch117/cellgen/team218/gp7/Joe/final_cluster_annotations.tsv")
+
+```
+
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(cowplot)
+library("ggrepel")
+
+```
+
+
+```{r}
+load('/lustre/scratch117/cellgen/team218/gp7/Joe/Jupyter/shiny_app.rda')
+```
+
+
+```{r}
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+```
+
+#necesary data
+```{r}
+
+save(
+edges,
+vert.names,
+pseudopool_matrix.zscore.PAGA,
+gene_count,
+PAGA,
+splicing_node_table,
+all_metadata,
+file = '/lustre/scratch117/cellgen/team218/gp7/Joe/Jupyter/shiny_app_light.rda'
+)
+```
+
+
+```{r}
+pseudopool_matrix.zscore.PAGA.total <- pseudopool_matrix.zscore.PAGA
+
+PAGA <- PAGA.total
+
+rm(PAGA)
+```
+
+
+
+```{r}
+pseudopool_matrix.zscore.PAGA <- pseudopool_matrix.zscore.PAGA.total[ !is.na(Psi) & Total_Reads>=5, .(pool_ID, Coord, cluster, Total_Reads, Psi, CI_low, CI_high,  FA1, FA2, PSI, n_cells)]
+```
+
+
+
+```{r, fig.width=10, fig.height=9}
+
+annotations <- ggplot() +
+          geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+
+xlab("FoceAtlas1") +
+  ylab("FoceAtlas2") +
+                  theme_bw() +
+    scale_size( range = c(0.01, 2)) +
+  
+     theme_classic() + 
+        theme(legend.position = "top") +
+    geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), size=2.7, 
+    box.padding = unit(1, 'lines'),
+     point.padding = 0.5,
+    segment.size=0.2,
+    max.overlaps=Inf,
+    segment.linetype="dashed",
+                label=vert.names$cell_type )  +
+  
+          geom_text(data=vert.names, aes(FA1, FA2, label=cluster, colour=Class ),
+                    fontface='bold', size=4)  +
+    theme(
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        ) 
+
+annotations
+
+```
+
+
+
+
+
+
+```{r}
+pseudopool_matrix.zscore.PAGA
+gene_count
+PAGA
+splicing_node_table
+all_metadata
+```
+
+
+
+
+
+```{r}
+
+
+
+
+splicing_plot <- function(node, max_tpm){
+
+gene <- unique(splicing_node_table[Coord==node, Gene])
+
+
+PAGA.genes <- merge( gene_count[Gene %in%  gene,] , PAGA[ ,.(cell=V1, FA1, FA2)], by="cell", all.y=T  )
+mgi_symbol <- unique(PAGA.genes[!is.na(mgi_symbol)]$mgi_symbol)
+
+
+gene_plot <- ggplot() +
+        geom_point(data=PAGA, aes(FA1, FA2), color="lightgray", alpha=0.1) +  
+        geom_point(data=PAGA.genes[!is.na(mgi_symbol) & !is.na(TpM), ][order(TpM)], aes(FA1, FA2, colour=log10(TpM)), alpha=0.2) +
+  #      geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+  
+                theme_classic() +
+     scale_colour_gradient2(low = "steelblue", midpoint = max_tpm/2, mid = "lightskyblue3", high = "firebrick", na.value = "gray40", limits=c(0,max_tpm)) +
+          theme(legend.position = "top", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank())  +
+  xlab("ForceAtlas1") +
+  ylab("ForceAtlas2") +
+  theme(
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        ) 
+
+
+vert <- pseudopool_matrix.zscore.PAGA[Coord==node,  .(FA1=mean(FA1, rm.na=T), FA2=mean(FA2, rm.na=T)) , by=c("cluster", "Coord")]
+
+#edges <- merge(PAGA_net[ , .(Var1=as.character(Var1), Var2=as.character(Var2), value)], vert, by.x='Var1', by.y='cluster')
+#edges <- merge(edges, vert, by.x='Var2', by.y='cluster')
+
+
+
+
+
+
+node_plot <- ggplot() +
+  
+        geom_point(data=vert, aes(FA1, FA2)) +
+        geom_segment(data=edges, aes(x=FA1.x, y=FA2.x, xend = FA1.y, yend = FA2.y, size=value), colour="grey" ) + 
+        geom_point(data=pseudopool_matrix.zscore.PAGA[Coord==node, ], aes(FA1, FA2, colour=PSI, size=log(n_cells)), position = position_jitter(w = 2e3, h = 2e3), alpha=0.5 ) +
+                theme_bw() +  
+      geom_text_repel(data = vert.names, colour="black", aes(FA1, FA2), 
+    box.padding = unit(0.5, 'lines'),
+    point.padding = 0.3,
+                label=vert.names$cluster )  +
+
+     scale_colour_gradient2(low = "steelblue", midpoint = 0.5, mid = "lightskyblue3", high = "firebrick", na.value = "gray40") +
+    scale_size( range = c(0.01, 4)) + 
+   theme_classic() +
+
+          theme(legend.position = "top", panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank())  +
+   
+  theme(
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), strip.text.x = element_text(size = 12, face="bold")
+        ) +
+  xlab("ForceAtlas1") +
+  ylab("ForceAtlas2") +
+
+  guides(size=FALSE)
+
+
+
+base_mean <- pseudopool_matrix.zscore.PAGA[Coord==node, mean(PSI)]
+
+pseudopool_matrix.zscore.PAGA.node <- pseudopool_matrix.zscore.PAGA[Coord==node, ]
+pseudopool_matrix.zscore.PAGA.node <- merge(pseudopool_matrix.zscore.PAGA.node, splicing_node_table, by="Coord")
+
+
+pseudopool_matrix.zscore.PAGA.node <- merge(pseudopool_matrix.zscore.PAGA.node, vert.names[, .(cluster, Class)], by="cluster")
+
+
+
+pseudopool_matrix.zscore.PAGA.node$Class <- factor(pseudopool_matrix.zscore.PAGA.node$Class , levels = levels(factor(vert.names$Class))) 
+ 
+
+pseudopool_matrix.zscore.PAGA.node$cluster <- factor(pseudopool_matrix.zscore.PAGA.node$cluster , levels =pseudopool_matrix.zscore.PAGA.node[ , mean(Psi, na.rm=T), by=cluster][order(V1)]$cluster )
+
+point_PSI <- ggplot(data =pseudopool_matrix.zscore.PAGA.node, aes(cluster, as.numeric(Psi), color = Class)) +
+    geom_hline(yintercept = base_mean, linetype="dashed", color = "black", size=1.5) +
+    geom_pointrange(aes(ymin = as.numeric(CI_low), ymax = as.numeric(CI_high)), 
+                    position=position_jitter(width=0.2, height=0, seed=1), 
+                    linetype='solid') +
+xlab("Leiden clusters") +
+ylab("Splice node PSI") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust=0.95,vjust=0.2), legend.position="none") +
+  guides(colour = guide_legend(nrow = 3)) +
+  scale_color_manual( values=gg_color_hue(10) , drop=FALSE) 
+
+
+
+gene_sp <- merge(gene_count[Gene==gene,], all_metadata[, .(cell=sample, pseudo_bulk_ID)], by="cell")
+gene_sp[ , c("cluster", "rep") := tstrsplit(pseudo_bulk_ID, "_", fixed=TRUE)]
+gene_sp.stats <- gene_sp[ , .(TpM=mean(TpM, na.rm=T), TpM_sd=sd(TpM, na.rm=T) ) , by=c("pseudo_bulk_ID","cluster") ]
+
+PAGA.genes.stats <- merge(gene_sp.stats, vert.names[, .(cluster, Class)], by="cluster")
+PAGA.genes.stats$Class <- factor(PAGA.genes.stats$Class , levels = levels(factor(vert.names$Class)))
+PAGA.genes.stats$cluster <- factor(PAGA.genes.stats$cluster , levels =pseudopool_matrix.zscore.PAGA.node[ , mean(Psi, na.rm=T), by=cluster][order(V1)]$cluster )
+
+
+max_tpm_est <- max(PAGA.genes.stats$TpM)
+PAGA.genes.stats <- PAGA.genes.stats[TpM+TpM_sd<max_tpm_est + max_tpm_est*0.1, ]
+#gene_sp[ , c("cluster", "rep") := tstrsplit(pseudo_bulk_ID, "_", fixed=TRUE)]
+
+gene_point <- ggplot(data =PAGA.genes.stats[!is.na(cluster), ], aes(cluster, as.numeric(TpM), color = Class)) +
+    geom_pointrange(aes(ymin = as.numeric(TpM-TpM_sd), ymax = as.numeric(TpM+TpM_sd)), 
+                    position=position_jitter(width=0.2, height=0, seed=1), 
+                    linetype='solid') +
+  xlab("Leiden clusters") +
+ylab("Gene TpM") +
+  #ylim( c(0, max_tpm_est + max_tpm_est*0.1)) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust=0.95,vjust=0.2), legend.position="none") +
+  guides(colour = guide_legend(nrow = 3)) +
+  scale_color_manual( values=gg_color_hue(10) , drop=FALSE)  +
+scale_x_discrete(  drop=FALSE)
+
+
+
+
+
+Title <- paste(mgi_symbol, splicing_node_table[Coord==node, .( Gene, Node, Type, Coord)][1, paste(Gene, Node, Type, Coord)], sep=" ")
+
+title <- ggdraw() + 
+  draw_label(
+   Title,
+    fontface = 'bold'#,
+#    x = 0,
+#    hjust = 0
+  ) +
+  theme(
+    # add margin on the left of the drawing canvas,
+    # so title is aligned with left edge of first plot
+    plot.margin = margin(7, 0, 0, 0)
+  )
+
+
+main <- plot_grid(gene_plot, node_plot, nrow=1)
+
+final_plot <- plot_grid(
+  title, main, gene_point, point_PSI,
+  ncol = 1,
+  # rel_heights values control vertical title margins
+  rel_heights = c(0.1, 1, 0.5, 0.5)
+)
+
+final_plot
+}
+
+
+```
+
+
+
+
+```{r, fig.height=9, fig.width=10}
+
+node = "11:77812009-77812191"
+
+splicing_plot(node, 4)
+
+
+```
+
+
+
+```{r}
+
+
+genes <- unique(gene_count[ , .(Gene, mgi_symbol)])
+splicing_nodes <- unique(pseudopool_matrix.zscore.PAGA[ , .(Gene, Coord, Node, Strand, Type)])
+splicing_node_table <- merge(splicing_nodes, genes, by="Gene" )
+
+splicing_node_table[mgi_symbol=="Actn4" & Node==13,]
+
+```
+
+
+Interesting nodes to look at
+11:77812009-77812191
+3:88819670-88819786
+2:153683608-153683677
+7:28911490-28911575
+7:28909903-28909988
+```{r, fig.height=9, fig.width=20}
+
+node = "7:28909903-28909988"
+plot_grid(annotations, splicing_plot(node, 4), nrow =1, rel_widths = c(1, 1) )
+
+
+```
+

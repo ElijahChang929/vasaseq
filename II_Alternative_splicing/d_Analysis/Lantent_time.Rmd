@@ -1,0 +1,164 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Lanten time
+####
+
+```{r}
+library(biomaRt)
+
+```
+
+
+
+```{r}
+
+cardio_time_pseudo.membership <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/")
+
+cardio_time_pseudo <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet/Quant/Single_Cell/Pseudo_bulks/pseudo_bulks.psi.tsv.gz")
+
+cardio_time_pseudo.metadata <- fread("/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/heart_specif_Cardio_E85_latent_time.grep.txt")
+
+
+cardio_time_pseudo[, pool_ID:=basename(Sample) ]
+cardio_time_pseudo[, cluster:=gsub("\\_.*","", pool_ID)]
+cardio_time_pseudo
+
+
+
+
+
+cardio_time_pseudo.membership[, cluster:=gsub("\\_.*","", pseudo_bulk_ID)]
+cardio_time_pseudo.membership[  cluster %in% c(1,2,3,4),  ]
+cardio_time_pseudo.membership.expand <- cardio_time_pseudo.membership[, .(barcode=strsplit(samples, ',')[[1]]), pseudo_bulk_ID]
+
+
+
+cardio_time_pseudo.membership.expand.metadata <- merge(cardio_time_pseudo.membership.expand, cardio_time_pseudo.metadata , by="barcode")
+```
+
+
+```{r}
+old_table <- data.table(id=1:4,
+                        values=c('A,B,C',
+                                 'D,E',
+                                 'F',
+                                 'G,H,I,J'))
+
+new_table <- old_table[, .(value=strsplit(values, ',')[[1]]), id]
+```
+
+```{r}
+heart.total.sig <-  fread('/lustre/scratch117/cellgen/team218/gp7/Joe/MicroExonator/Whippet.old/Cardiomyocytes_Precursors_vs_Cardiomyocytes_e85.txt')
+
+heart.sig
+
+
+
+cardio_time_pseudo.node
+
+node_vector <-gsub('chr', '',  heart.total.sig[ Gene=="ENSMUSG00000026305.15", Coord ])
+
+node_vector
+```
+
+
+
+```{r}
+
+visualise_latent_time <- function(time_pseudo, time_pseudo.membership.expand.metadata, node_vector, gene_vector) {
+
+time_pseudo.node <- time_pseudo[ Coord %in% node_vector & cluster %in% c(1,2,3,4),  ][order(cluster)]
+
+
+
+
+gene_vector[time_pseudo.node$Gene]
+
+time_pseudo.node[ , c("CI_low", "CI_high") := tstrsplit(`CI_Lo,Hi`, ",", fixed=TRUE)]
+
+
+time_pseudo.node.LT <- merge(time_pseudo.node, time_pseudo.membership.expand.metadata[, .(latent_time=mean(latent_time)) , by=pseudo_bulk_ID], by.x="pool_ID", by.y="pseudo_bulk_ID")
+
+time_pseudo.node.LT$Coord <- factor(time_pseudo.node.LT$Coord, levels = node_vector)
+
+ggplot(data = time_pseudo.node.LT, aes(latent_time, as.numeric(Psi))) +
+    geom_pointrange(aes(ymin = as.numeric(CI_low), ymax = as.numeric(CI_high), colour=cluster), 
+                    linetype='solid') +
+  geom_smooth(method = "gam", linetype='dashed', colour="black") +
+  
+xlab("Mean latent time") +
+ylab("Mean pseudo-pool splice node PSI") +
+  
+  facet_grid(. ~  Coord, labeller = labeller(Coord = gene_vector) ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust=0.95,vjust=0.2), legend.position="none") +
+  guides(colour = guide_legend(nrow = 3))  +
+  ylim(c(0,1))
+}
+```
+
+
+```{r, fig.width=15, fig.height=3 }
+node_vector <- gsub('chr', '',  heart.total.sig[ Gene=="ENSMUSG00000026305.15", Coord ])
+
+
+
+visualise_latent_time( cardio_time_pseudo, cardio_time_pseudo.membership.expand.metadata, node_vector)
+```
+
+
+
+```{r, fig.width=15, fig.height=3 }
+node_vector <- gsub('chr', '',  head(heart.total.sig[order(-abs(DeltaPsi.mean) )]$Coord, n=10))
+
+visualise_latent_time( cardio_time_pseudo, cardio_time_pseudo.membership.expand.metadata, node_vector)
+```
+
+
+
+```{r, fig.width=12, fig.height=3 }
+
+ensembl_mm = useEnsembl(biomart="ensembl", dataset="mmusculus_gene_ensembl")
+
+str_split( as.character(heart.total.sig$Gene), sep=".")
+
+
+
+heart.total.sig[, ensembl_gene_id:= gsub("\\..*","", Gene)]
+
+
+gene_table <- data.table(getBM(attributes=c('ensembl_gene_id', "mgi_symbol"),filters = 'ensembl_gene_id', values = heart.total.sig$ensembl_gene_id , mart = ensembl_mm))
+
+heart.total.sig.genes <-  merge(heart.total.sig, gene_table, by="ensembl_gene_id")
+
+
+gene_table
+
+gene_vector <- heart.total.sig.genes$mgi_symbol
+names(gene_vector) <-  gsub('chr', '',  heart.total.sig.genes$Coord)
+
+heart.total.sig[ Gene=="ENSMUSG00000026305.15", Coord ]
+
+total_gene_table <- data.table(getBM(attributes=c("ensembl_transcript_id_version", "ensembl_transcript_id", "mgi_symbol"), filters = 'ensembl_transcript_id_version', values = ME_final$transcript , mart = ensembl_mm))
+
+node_vector <- gsub('chr', '',  heart.total.sig[order(cdf.beta),  ][1:10, ][order(DeltaPsi.mean)]$Coord)
+
+visualise_latent_time( cardio_time_pseudo, cardio_time_pseudo.membership.expand.metadata, node_vector, gene_vector)
+```
+
+
+
+
+
+```{r}
+node_vector <- "X:140542511-140542668"
+
+time_pseudo <- cardio_time_pseudo
+time_pseudo.membership.expand.metadata <- cardio_time_pseudo.membership.expand.metadata
+
+visualise_latent_time( cardio_time_pseudo, cardio_time_pseudo.membership.expand.metadata, node_vector)
+```
+

@@ -1,0 +1,78 @@
+# ---------------------------------------------------------------------------
+# This repo holds PIPELINE CODE ONLY. All sequencing data, references and
+# pipeline outputs live outside it (../data, ../../reference) and must never be
+# committed -- a single plate's intermediates are ~9 GB per stage.
+#
+# NB the patterns below are deliberately targeted rather than blanket
+# extensions: *.tsv and *.txt are NOT ignored, because barcode whitelists
+# (I_Gene_expression/a_Mapping/bc_celseq2.tsv), Snakemake configs
+# (samples.tsv, units.tsv) and gene lists (Mus_musculus_TF.txt) are tracked
+# config that the pipeline needs.
+# ---------------------------------------------------------------------------
+
+# --- python bytecode -------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- raw + intermediate sequencing data ------------------------------------
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.sam
+*.bam
+*.bam.bai
+*.cram
+*.sai
+*.bed.gz
+*.pickle
+*.pickle.gz
+
+# --- references (built locally, tens of GB) --------------------------------
+*.fa
+*.fasta
+*.fa.gz
+*.fasta.gz
+*.gtf
+*.gtf.gz
+*.fa.amb
+*.fa.ann
+*.fa.bwt
+*.fa.pac
+*.fa.sa
+star_index*/
+
+# --- mapping-pipeline outputs ----------------------------------------------
+# stage 1-5 per-cell intermediates and stage 6-7 count tables
+*_cbc.fastq.gz
+*_cbc_trimmed*
+*.nonRibo*
+*-ribo.bam
+*Aligned.out*
+*Log.final.txt
+*Log.progress.out
+*_STARtmp/
+*_genes.bed.gz
+*_trimming_report.txt
+*ReadCounts.tsv
+*UFICounts.tsv
+*TranscriptCounts.tsv
+*_mapStats.log
+.cells.manifest
+checkme.txt
+
+# working/output folders produced by the drivers
+vasaplate_out*/
+smoketest/
+
+# --- SLURM job logs --------------------------------------------------------
+slurm-*.out
+*.err
+*.out
+
+# --- editor / OS cruft -----------------------------------------------------
+.DS_Store
+*.swp
+*~

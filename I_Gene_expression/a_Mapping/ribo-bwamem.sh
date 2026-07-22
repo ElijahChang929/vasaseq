@@ -27,7 +27,13 @@ stranded=$6
 p2s=$7
 
 folder=${fq%/*}
-fq=${fq#*/}
+# NB: ## (longest prefix), not # (shortest). With a single '#' this only yields
+# a basename when the path has exactly one '/', e.g. the relative
+# "vasaplate_out/cell_cbc_..." the upstream driver happens to pass; any
+# absolute path became "folder/nemo/lab/.../cell_cbc_..." and every bwa/samtools
+# call below silently failed on a nonexistent file. Behaviour is unchanged for
+# the single-'/' relative case that upstream used.
+fq=${fq##*/}
 
 # mapping short reads
 ${p2bwa}/bwa aln ${ref} ${folder}/${fq} > ${folder}/aln_${fq%.f*q}.sai 

@@ -376,16 +376,40 @@ has exactly one distinct `CB` tag). So per cell the whole tail is a fixed
 28 nt pattern with only the UMI unknown:
 
 ```
-revcomp(CBC)  N x LEN_UMI  <first 16 nt of the read-through adapter>
- 6 specific     6 any            16 specific        = 22 specific of 28
+revcomp(CBC)  N x LEN_UMI  <first TRIM_ANCHOR_ADLEN nt of the adapter>
+ 6 specific     6 any                21 specific        = 27 specific of 33
 ```
+
+`TRIM_ANCHOR_ADLEN` is **21, and that is not a free parameter**:
+`TRIM_ADAPTER3[:21]` is *exactly* `revcomp(the 21 nt prefix SKIP5 strips off
+R1)`, with the Nextera mosaic end starting at 22. It is the same 21 nt seen at
+both ends of the molecule, so the number to remember is just `SKIP5`.
+
+It was swept anyway (round 9, cell 011), because longer is not automatically
+better — `min_overlap` is the anchor's full length, so a bigger value demands
+that more adapter was actually sequenced before the anchor can fire:
+
+| adapter nt in anchor | anchor fires | protein-coding exonic | purity |
+|---|---|---|---|
+| 8 | 12,080 | 41,015 | 51.0% |
+| 12 | 77,981 | 40,681 | 54.2% |
+| 16 | 84,689 | 40,678 | 54.4% |
+| **21** | **80,697** | **40,678** | **54.2%** |
+| 26 | 12,760 | 41,020 | 50.4% |
+
+12/16/21 are a flat plateau — equal to within 3 exonic reads — so the
+principled boundary costs nothing. Outside it the anchor stops working and you
+fall back to the round-5 behaviour: at 26 the 38 nt pattern no longer fits
+inside most reads; at 8 the 40 nt `rt` adapter outscores the 20 nt anchor and
+takes the match instead. Both leave the remnant behind and purity drops to
+~51%.
 
 `trim.sh` reads the barcode off the first read's `CB:` tag — not the filename,
 not the whitelist order — so it cannot silently pair a cell with the wrong
-barcode. `min_overlap` is set to the full 28, which forbids partial 3'-end
-matching; that is the difference between this and the round-2 wildcard disaster
-below. With full-length matching required, 22 specific bases make a chance hit
-impossible.
+barcode. `min_overlap` is set to the anchor's full length, which forbids
+partial 3'-end matching; that is the difference between this and the round-2
+wildcard disaster below. With full-length matching required, 27 specific bases
+make a chance hit impossible.
 
 The point is what it unlocks. Once the anchor is gone the poly-A is at the very
 3' **end** of the read, which is the only place `--poly-a` looks — so tails

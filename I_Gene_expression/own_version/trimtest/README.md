@@ -37,7 +37,8 @@ than round 5 and is still the better one.
 | `bench_trim5.sh` | round 5: is poly-G free? (yes). **v17 = the adopted setting** |
 | `bench_trim6.sh` | round 6: can the leftover 12 nt barcode remnant be removed *by shape*? (no) |
 | `bench_trim7.sh` | round 7: locate the tail by the **cell barcode** instead. **v23** |
-| `bench_trim8.sh` | round 8: reverse orientation (absent) and 5' poly-T (worth it). **v25 = adopted** |
+| `bench_trim8.sh` | round 8: reverse orientation (absent) and 5' poly-T (worth it). **v25** |
+| `bench_trim9.sh` | round 9: sweep how much adapter the anchor carries. **L21 = adopted** |
 | `annot_fraction.sh` | where alignments land in the annotation — **the metric that decides** |
 | `bench_bam.sh` | re-maps selected variants keeping the BAM |
 | `aligned_composition.py` | poly-A-only / short / soft-clip breakdown from those BAMs |
@@ -58,7 +59,9 @@ than round 5 and is still the better one.
 | v18–v20 | v17 plus attempts to remove the 12 nt remnant by shape; all net losses |
 | v21–v23 | barcode-anchored tail removal; **v23** = anchor + v17 + `--poly-a` |
 | v24 | v23 + reverse-orientation anchor + 5' poly-T |
-| **v25** | **v24 minus the reverse anchor (it fired 13 times) — what `trim.sh` runs** |
+| v25 | v24 minus the reverse anchor (it fired 13 times) |
+| L8…L26 | v25 with the anchor carrying 8/12/16/21/26 nt of adapter |
+| **L21** | **= v25 at the principled boundary — what `trim.sh` runs** |
 
 ## Rebuilding the inputs
 

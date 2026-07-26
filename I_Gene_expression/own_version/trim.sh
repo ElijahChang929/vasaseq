@@ -55,6 +55,7 @@ TRIM_ADAPTER3="${TRIM_ADAPTER3:-}"
 TRIM_MINLEN="${TRIM_MINLEN:-20}"
 TRIM_ANCHOR_BC="${TRIM_ANCHOR_BC:-yes}"        # anchor on the cell barcode
 TRIM_LEN_UMI="${TRIM_LEN_UMI:-${LEN_UMI:-6}}"  # wildcards between CBC and adapter
+TRIM_ANCHOR_ADLEN="${TRIM_ANCHOR_ADLEN:-21}"   # adapter nt carried by the anchor
 # an if, not "${VAR:-A{20}}" -- the `}` in the default would close the expansion
 # early and leave a stray brace in the adapter. See config.sh for the long note.
 [ -n "${TRIM_POLYA+x}" ] || TRIM_POLYA='A{20}'
@@ -100,13 +101,23 @@ opts=(-m "${TRIM_MINLEN}" --trim-n -n 3)
 # exactly one distinct CB tag). So per cell the whole tail is a fixed pattern
 # with only the UMI unknown:
 #
-#     revcomp(CBC)  N x LEN_UMI  <first 16 nt of the read-through adapter>
-#      6 specific     6 any            16 specific        = 22 specific of 28
+#   revcomp(CBC)  N x LEN_UMI  <first TRIM_ANCHOR_ADLEN nt of the adapter>
+#    6 specific     6 any               21 specific       = 27 specific of 33
+#
+# TRIM_ANCHOR_ADLEN defaults to 21 because TRIM_ADAPTER3[:21] is EXACTLY
+# revcomp(the 21 nt prefix stripped from R1) -- everything past 21 is the
+# Nextera mosaic end. So it is the same 21 nt at both ends of the read and there
+# is no magic number to remember: it is SKIP5. Measured plateau (round 9):
+# 12, 16 and 21 all give 40,678-40,681 protein-coding exonic reads, i.e. equal
+# to within 3 reads, so the principled boundary costs nothing. Outside that
+# window the anchor stops working -- at 26 the pattern is too long to fit inside
+# most reads (fires 12,760 times vs 80,697 at 21), and at 8 it is short enough
+# that the 40 nt `rt` adapter outscores it and wins the match instead (12,080).
 #
 # min_overlap is set to the FULL length, which forbids partial 3'-end matching.
 # That matters: partial matching plus wildcards is what made an earlier attempt
 # eat the end of every read (see README, "What did not work"). With full-length
-# matching required, 22 specific bases make a chance hit impossible.
+# matching required, 27 specific bases make a chance hit impossible.
 #
 # What this unlocks is the poly-A. Once the anchor is removed the poly-A is at
 # the very 3' END of the read, which is the only place --poly-a looks, so tails
@@ -121,7 +132,7 @@ if [ "$TRIM_ANCHOR_BC" = "yes" ] && [ -n "$TRIM_ADAPTER3" ]; then
     if [ -n "$cb" ]; then
         cbrc=$(printf '%s' "$cb" | tr ACGTacgt TGCAtgca | rev)
         umiN=$(printf 'N%.0s' $(seq 1 "$TRIM_LEN_UMI"))
-        anchor="${cbrc}${umiN}${TRIM_ADAPTER3:0:16}"
+        anchor="${cbrc}${umiN}${TRIM_ADAPTER3:0:$TRIM_ANCHOR_ADLEN}"
         opts+=(-a "bcumi=${anchor};min_overlap=${#anchor}")
         opts+=(--poly-a)
     else

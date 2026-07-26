@@ -148,6 +148,18 @@ TRIM_MINLEN="${TRIM_MINLEN:-20}"
 # shorter than 20 nt get cleaned, which TRIM_POLYA alone cannot do.
 TRIM_ANCHOR_BC="${TRIM_ANCHOR_BC:-yes}"
 
+# How much of TRIM_ADAPTER3 the anchor carries. 21 is not arbitrary:
+# TRIM_ADAPTER3[:21] is EXACTLY revcomp(the 21 nt prefix SKIP5 strips off R1),
+# and everything past 21 is the Nextera mosaic end -- so it is the same 21 nt
+# seen at both ends of the molecule, and the value to remember is just SKIP5.
+# Measured (round 9, cell 011): 12 / 16 / 21 all give 40,678-40,681
+# protein-coding exonic reads -- equal to within 3 reads, a flat plateau. Go
+# outside it and the anchor stops firing: at 26 the pattern no longer fits
+# inside most reads (12,760 hits vs 80,697 at 21), and at 8 the 40 nt `rt`
+# adapter outscores it and takes the match instead (12,080 hits). Both then
+# leave the 12 nt remnant behind and purity drops back to ~51%.
+TRIM_ANCHOR_ADLEN="${TRIM_ANCHOR_ADLEN:-21}"
+
 # Where cell IDs in the final count table come from:
 #   f = from the filename  (ids look like "cells/MYSAMPLE_001")
 #   r = from the read name (ids look like "001" -- cleaner for a single sample)

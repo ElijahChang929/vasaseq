@@ -53,10 +53,13 @@ TRIM_MODE="${TRIM_MODE:-vasa}"                 # vasa | legacy
 TRIM_CUTADAPT="${TRIM_CUTADAPT:-${path2cutadapt}/cutadapt}"   # pass 2 binary
 TRIM_ADAPTER3="${TRIM_ADAPTER3:-}"
 TRIM_MINLEN="${TRIM_MINLEN:-20}"
+TRIM_ANCHOR_BC="${TRIM_ANCHOR_BC:-yes}"        # anchor on the cell barcode
+TRIM_LEN_UMI="${TRIM_LEN_UMI:-${LEN_UMI:-6}}"  # wildcards between CBC and adapter
 # an if, not "${VAR:-A{20}}" -- the `}` in the default would close the expansion
 # early and leave a stray brace in the adapter. See config.sh for the long note.
 [ -n "${TRIM_POLYA+x}" ] || TRIM_POLYA='A{20}'
 [ -n "${TRIM_POLYG+x}" ] || TRIM_POLYG='G{20}'
+[ -n "${TRIM_POLYT5+x}" ] || TRIM_POLYT5='T{20}'
 
 stem=${file2trim%.fastq.gz}
 
@@ -85,11 +88,65 @@ fi
 #          reads are poly-A stuck to a handful of loci, with it 3.7%.
 #   polyG  the two-colour "no signal" artefact. Costs nothing on this run
 #          (18 reads in 300k); kept because it is free insurance on a NovaSeq X.
-# -n 2 so the poly-A can still be reached after the read-through is removed.
-opts=(-m "${TRIM_MINLEN}" --trim-n -n 2)
+#   bcumi  the barcode anchor, built below. This is the one that knows where
+#          the tail starts rather than guessing from its shape.
+# -n 3 so poly-A can still be reached after the anchor and read-through go.
+opts=(-m "${TRIM_MINLEN}" --trim-n -n 3)
+
+# --- the barcode anchor ------------------------------------------------------
+# The tail does not have to be recognised by shape -- we know what follows it.
+# concatenator.py put the cell barcode and UMI on the read name at step 1, and
+# within one cell's fastq the barcode is CONSTANT (verified: a per-cell file has
+# exactly one distinct CB tag). So per cell the whole tail is a fixed pattern
+# with only the UMI unknown:
+#
+#     revcomp(CBC)  N x LEN_UMI  <first 16 nt of the read-through adapter>
+#      6 specific     6 any            16 specific        = 22 specific of 28
+#
+# min_overlap is set to the FULL length, which forbids partial 3'-end matching.
+# That matters: partial matching plus wildcards is what made an earlier attempt
+# eat the end of every read (see README, "What did not work"). With full-length
+# matching required, 22 specific bases make a chance hit impossible.
+#
+# What this unlocks is the poly-A. Once the anchor is removed the poly-A is at
+# the very 3' END of the read, which is the only place --poly-a looks, so tails
+# SHORTER than 20 nt -- which A{20} structurally cannot catch -- are cleaned
+# too. Barcode remnant in the output: 13.6% without this, 2.2% with it.
+if [ "$TRIM_ANCHOR_BC" = "yes" ] && [ -n "$TRIM_ADAPTER3" ]; then
+    # take the barcode off the first read's CB: tag rather than the filename or
+    # the whitelist order, so this cannot silently pair a cell with the wrong
+    # barcode
+    cb=$(zcat "$file2trim" 2>/dev/null | head -1 \
+         | tr ';' '\n' | awk -F: '$1=="CB"{print $2; exit}')
+    if [ -n "$cb" ]; then
+        cbrc=$(printf '%s' "$cb" | tr ACGTacgt TGCAtgca | rev)
+        umiN=$(printf 'N%.0s' $(seq 1 "$TRIM_LEN_UMI"))
+        anchor="${cbrc}${umiN}${TRIM_ADAPTER3:0:16}"
+        opts+=(-a "bcumi=${anchor};min_overlap=${#anchor}")
+        opts+=(--poly-a)
+    else
+        echo "trim.sh: no CB: tag on the first read of ${file2trim}," \
+             "skipping the barcode anchor" >&2
+    fi
+fi
+
 [ -n "$TRIM_ADAPTER3" ] && opts+=(-a "rt=${TRIM_ADAPTER3};min_overlap=8")
 [ -n "$TRIM_POLYA"    ] && opts+=(-a "polyA=${TRIM_POLYA};min_overlap=10")
 [ -n "$TRIM_POLYG"    ] && opts+=(-a "polyG=${TRIM_POLYG};min_overlap=10")
+
+# 5' poly-T. A read in the reverse orientation reads the poly-A tail as poly-T
+# at its START, so this is a -g (5') adapter: it removes the match and
+# everything BEFORE it. It removes ~3,400 uniquely mapped reads per 300k from a
+# real cell of which ~98% were non-exonic, leaving the protein-coding exonic
+# count flat -- i.e. it deletes junk and nothing else. On the blank barcode 016
+# it is the difference between 47,284 and 12,396 uniquely mapped reads: the
+# blank finally looks like a blank.
+#
+# The mirror-image barcode anchor for reverse-orientation reads is deliberately
+# NOT here. It was built and measured (trimtest/bench_trim8.sh) and fired 13
+# times in 300,000 reads: this library has no meaningful reverse population, and
+# all of the gain above comes from the poly-T alone.
+[ -n "$TRIM_POLYT5"   ] && opts+=(-g "polyT5=${TRIM_POLYT5};min_overlap=10")
 
 # `env -u PYTHONPATH` is load-bearing. Loading the Trim_Galore module puts
 # cutadapt 1.18's site-packages on PYTHONPATH, so the conda env's cutadapt 5.1

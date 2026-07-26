@@ -128,9 +128,25 @@ TRIM_ADAPTER3="${TRIM_ADAPTER3:-GATCGTCGGACTGTAGAACTCCTGTCTCTTATACACATCT}"
 [ -n "${TRIM_POLYA+x}" ] || TRIM_POLYA='A{20}'
 [ -n "${TRIM_POLYG+x}" ] || TRIM_POLYG='G{20}'
 
+# 5' poly-T: a read in the reverse orientation reads the poly-A tail as poly-T
+# at its START, so this is applied as a 5' adapter (removes the match and
+# everything before it). It deletes junk almost exclusively -- protein-coding
+# exonic counts stay flat while ~3,400 non-exonic uniquely mapped reads per 300k
+# go away -- and it is what makes the blank barcodes look blank again.
+[ -n "${TRIM_POLYT5+x}" ] || TRIM_POLYT5='T{20}'
+
 # Reads shorter than this after trimming are dropped. Upstream used 15; 20 is
 # about the shortest that still maps somewhere believable.
 TRIM_MINLEN="${TRIM_MINLEN:-20}"
+
+# Anchor the trim on the cell barcode. The 3' tail does not have to be
+# recognised by its shape -- step 1 already recorded the barcode and UMI on the
+# read name, and within one cell's fastq the barcode is constant, so the tail is
+# a known 28 nt pattern with only the UMI unknown. trim.sh reads the barcode off
+# the first read's CB: tag; nothing to configure. Set to "no" to switch it off.
+# Effect: barcode remnant in the output drops 13.6% -> 2.2%, and poly-A tails
+# shorter than 20 nt get cleaned, which TRIM_POLYA alone cannot do.
+TRIM_ANCHOR_BC="${TRIM_ANCHOR_BC:-yes}"
 
 # Where cell IDs in the final count table come from:
 #   f = from the filename  (ids look like "cells/MYSAMPLE_001")

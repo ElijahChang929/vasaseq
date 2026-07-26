@@ -17,10 +17,14 @@ the second, cutadapt pass varies. The score is therefore the **absolute number
 of uniquely mapped reads**, not the mapping rate: a variant that discards more
 reads can always show a better rate, but it cannot fake a bigger count.
 
-That number alone is not enough, because this library's poly-A tail can align
-to genomic A-tracts and inflate it. `aligned_composition.py` reads the BAM and
-splits uniquely mapped reads into genuine versus **poly-A-only** — aligned
-block (soft clips excluded) ≥80% A or T. The recommendation maximises genuine.
+That reasoning is not enough, and round 7 broke it. A read that is 10 nt of
+insert followed by 19 nt of poly-A and barcode aligns as a 29 nt unit and
+inflates the count with an alignment that is mostly junk;
+`aligned_composition.py` does not catch it either, because such a read is not
+A-rich. **`annot_fraction.sh` is the metric that decides**: junk has no reason
+to land inside a gene, so the score is uniquely mapped reads overlapping a
+protein-coding exon. The adopted setting scores *lower* on raw unique reads
+than round 5 and is still the better one.
 
 ## Files
 
@@ -31,7 +35,10 @@ block (soft clips excluded) ≥80% A or T. The recommendation maximises genuine.
 | `bench_trim3.sh` | round 3: literal adapters with a high `min_overlap`, after wildcards proved harmful |
 | `bench_trim4.sh` | round 4: same, with the read-through adapter **measured** from the reads |
 | `bench_trim5.sh` | round 5: is poly-G free? (yes). **v17 = the adopted setting** |
-| `bench_trim6.sh` | round 6: can the leftover 12 nt barcode remnant be removed? (not worth it) |
+| `bench_trim6.sh` | round 6: can the leftover 12 nt barcode remnant be removed *by shape*? (no) |
+| `bench_trim7.sh` | round 7: locate the tail by the **cell barcode** instead. **v23** |
+| `bench_trim8.sh` | round 8: reverse orientation (absent) and 5' poly-T (worth it). **v25 = adopted** |
+| `annot_fraction.sh` | where alignments land in the annotation — **the metric that decides** |
 | `bench_bam.sh` | re-maps selected variants keeping the BAM |
 | `aligned_composition.py` | poly-A-only / short / soft-clip breakdown from those BAMs |
 | `summarise_trim.sh` | the comparison table; `VARS="v1 v13 v17" ./summarise_trim.sh` |
@@ -48,7 +55,10 @@ block (soft clips excluded) ≥80% A or T. The recommendation maximises genuine.
 | v9–v12 | literal adapters, `min_overlap=8`; adapter guessed |
 | v13–v16 | as v9–v12 with the **measured** adapter |
 | **v17** | **v14 + poly-G — what `trim.sh` runs in `TRIM_MODE=vasa`** |
-| v18–v20 | v17 plus attempts to remove the leftover 12 nt barcode remnant; all net losses |
+| v18–v20 | v17 plus attempts to remove the 12 nt remnant by shape; all net losses |
+| v21–v23 | barcode-anchored tail removal; **v23** = anchor + v17 + `--poly-a` |
+| v24 | v23 + reverse-orientation anchor + 5' poly-T |
+| **v25** | **v24 minus the reverse anchor (it fired 13 times) — what `trim.sh` runs** |
 
 ## Rebuilding the inputs
 

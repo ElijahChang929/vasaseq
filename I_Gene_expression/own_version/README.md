@@ -130,7 +130,7 @@ Each step's output is the next step's input. That is the whole design.
 | Step | Does | Produces |
 |---|---|---|
 | `step1` extract | strips the 21 nt prefix, moves cell barcode + UMI onto the **read name**, splits into one fastq per cell | `cells/<sample>_<cell>_cbc.fastq.gz` |
-| `step2` trim | TrimGalore (adapters, Q<20) then cutadapt (3' read-through + poly-A/G) — see "Step 2" | `..._cbc_trimmed_homoATCG.fq.gz` |
+| `step2` trim | TrimGalore (adapters, Q<20) then cutadapt: 3' read-through, tail located by the cell barcode, poly-A/G/T — see "Step 2" | `..._cbc_trimmed_homoATCG.fq.gz` |
 | `step3` ribo | removes rRNA using **both** `bwa aln` and `bwa mem` | `....nonRibo.fastq.gz` |
 | `step4` map | STAR to the genome, multimappers kept | `..._E99_Aligned.out.bam` |
 | `step5` assign | intersects reads with the annotation BED, unique + multi separately | `*_genes.bed.gz` |
@@ -294,16 +294,55 @@ the poly-A tail stuck to a genomic A-tract; *genuine* = unique − poly-A-only.
 | setting | kept | unique | poly-A-only | **genuine** |
 |---|---|---|---|---|
 | `TRIM_MODE=legacy` (upstream) | 154,152 | 74,779 | 4.8% | 71,163 |
-| **`TRIM_MODE=vasa` (adopted)** | 164,798 | **84,860** | **3.7%** | **81,702** |
+| adapter + poly-A (round 5) | 164,798 | 84,860 | 3.7% | 81,702 |
+| **adopted (round 7/8)** | 135,539 | 74,808 | — | — |
 | adapter only, no poly-A trim | 292,736 | 108,553 | 16.6% | 90,509 |
 
-+15% genuine reads *and* a lower artefact rate than before. Cell 007 behaves
-the same (71,873 → 84,803 unique). Splice junctions go 18,700 → 19,400.
+**Do not read that table as the answer** — uniquely mapped reads is the wrong
+final score, and the adopted setting deliberately scores lower on it. See
+"Judging by yield alone is wrong" below. The honest scoreboard is:
+
+| setting | unique | in annotation | % | **protein-coding exonic** | % |
+|---|---|---|---|---|---|
+| upstream | 74,779 | 63,911 | 85.5% | 39,252 | 52.5% |
+| adapter + poly-A | 84,860 | 69,750 | 82.2% | 40,968 | 48.3% |
+| + barcode anchor | 78,171 | 65,746 | 84.1% | 40,602 | 51.9% |
+| **adopted, + 5' poly-T** | 74,808 | 63,896 | 85.4% | **40,678** | **54.4%** |
+
++3.6% protein-coding exonic reads over upstream at the highest purity of any
+setting tried. Cell 007 tracks cell 011 throughout. Splice junctions 18,700 →
+19,400.
 
 The third row is the trap. Dropping `TRIM_POLYA` looks like +45% unique reads,
 but the extra alignments are poly-A landing on a handful of genomic A-tracts —
 18,044 such reads over 3,637 100-kb bins with 1,054 in the top one. Keep the
 poly-A trim.
+
+### Judging by yield alone is wrong
+
+Rounds 1–6 scored variants on uniquely mapped reads, on the grounds that a
+variant cannot fake a bigger absolute count. That was too naive, and round 7
+found the hole. Consider a read like
+
+```
+TCACATTCGA AAAAAAAA TGTCAC TTTGTA
+|--insert--|-poly-A-|-rc(CBC)-rc(UMI)-|
+```
+
+10 nt of real sequence and 19 nt of junk. The round-5 setting kept it — the
+poly-A run is only 8 nt so `A{20}` cannot fire — and STAR aligns the 29 nt
+happily. It is not A-rich, so `aligned_composition.py` passes it too. The count
+goes up and the data gets worse.
+
+`annot_fraction.sh` is the test that sees it: junk has no reason to land inside
+a gene. Comparing the round-5 setting against the adopted one, the 10,052 extra
+uniquely mapped reads it brings contain **290 extra protein-coding exonic
+reads** — 2.9%, against a 54% baseline. They are ~20× depleted in exons, i.e.
+they are overwhelmingly intronic and intergenic. For VASA that is the worst
+possible place to add noise, because the intronic signal *is* the measurement.
+
+So the adopted setting scores **lower** on uniquely mapped reads than round 5
+and is still the better one. Use `annot_fraction.sh`, not read counts.
 
 ### What is actually left in a trimmed read
 
@@ -324,10 +363,55 @@ happens when there is a ≥20 nt run to match. Where the poly-A is shorter, ther
 is no match and both the short run and the 12 nt stay.
 
 The barcode and UMI are already on the read name from step 1, so the remnant is
-pure junk: STAR soft-clips it, but it still counts against
-`outFilterMatchNminOverLread`. Removing it properly was tried and **is not
-worth it** — see the last bullet below. A residual 12 nt on a ~120 nt read is
-cheap; every way of cutting it is not.
+pure junk. Two ways of removing it by *shape* were tried and both cost more
+than they gained (see the bullets below). What works is removing it by
+**identity**:
+
+### The barcode anchor
+
+The tail does not have to be recognised by its shape — we know what follows it.
+`concatenator.py` put the cell barcode and UMI on the read name at step 1, and
+within one cell's fastq the barcode is **constant** (verified: a per-cell file
+has exactly one distinct `CB` tag). So per cell the whole tail is a fixed
+28 nt pattern with only the UMI unknown:
+
+```
+revcomp(CBC)  N x LEN_UMI  <first 16 nt of the read-through adapter>
+ 6 specific     6 any            16 specific        = 22 specific of 28
+```
+
+`trim.sh` reads the barcode off the first read's `CB:` tag — not the filename,
+not the whitelist order — so it cannot silently pair a cell with the wrong
+barcode. `min_overlap` is set to the full 28, which forbids partial 3'-end
+matching; that is the difference between this and the round-2 wildcard disaster
+below. With full-length matching required, 22 specific bases make a chance hit
+impossible.
+
+The point is what it unlocks. Once the anchor is gone the poly-A is at the very
+3' **end** of the read, which is the only place `--poly-a` looks — so tails
+*shorter* than 20 nt, which `A{20}` structurally cannot catch, get cleaned too.
+Barcode remnant in the output: **13.6% → 2.2%**.
+
+It does not increase yield — protein-coding exonic reads go 40,968 → 40,602,
+i.e. flat. What it buys is that the reads which disappear are the ones that were
+mostly barcode. That is the whole argument, and it is why the scoreboard above
+had to change from "unique reads" to "exonic reads".
+
+### 5' poly-T, and the reverse orientation
+
+A read in the opposite orientation reads the poly-A tail as poly-T at its
+*start*, so it is a 5' problem: `-g "T{20}"` removes the match and everything
+before it. On a real cell it deletes ~3,400 uniquely mapped reads of which
+~98% were non-exonic, leaving the protein-coding exonic count flat — it removes
+junk and essentially nothing else. On the blank barcode 016 it is the
+difference between 47,284 and 12,396 uniquely mapped reads: **the blank finally
+looks like a blank.**
+
+The mirror-image barcode anchor for reverse-orientation reads —
+`revcomp(adapter) N{6} CBC` as a 5' adapter — was built and measured
+(`trimtest/bench_trim8.sh`) and **fired 13 times in 300,000 reads**. This
+library has no meaningful reverse population; all of the gain is the poly-T.
+It is not in `trim.sh`; the benchmark is kept so nobody rebuilds it.
 
 ### What did *not* work, so you don't retry it
 
@@ -379,9 +463,13 @@ All in `config.sh`; `TRIM_MODE=legacy` restores upstream byte-for-byte
 (verified by md5 against the benchmark's `v0`).
 
 ```bash
-TRIM_MODE=legacy ./pipeline.sh step2      # upstream behaviour
-TRIM_POLYA=      ./pipeline.sh step2      # disable the poly-A trim (don't)
+TRIM_MODE=legacy   ./pipeline.sh step2    # upstream behaviour
+TRIM_ANCHOR_BC=no  ./pipeline.sh step2    # no barcode anchor
+TRIM_POLYT5=       ./pipeline.sh step2    # no 5' poly-T trim
+TRIM_POLYA=        ./pipeline.sh step2    # disable the poly-A trim (don't)
 ```
+
+Judge any change with `trimtest/annot_fraction.sh`, not with read counts.
 
 Step 2's second pass needs **cutadapt ≥ 4.4** for per-adapter `;min_overlap=`.
 The module tree stops at 1.18 (2018), so cutadapt 5.1 was pip-installed into
@@ -398,10 +486,11 @@ TrimGalore's own pass still drives the module's 1.18.
    records the skip lengths in the log. `--skip5 0` reproduces the original
    byte for byte (verified on 384 cells).
 2. **`trim.sh`** — step 2's second pass trims the measured 3' read-through
-   adapter plus real poly-A/poly-G runs, instead of cutting at the first run of
-   6 identical bases. +15% genuine uniquely mapped reads at a lower poly-A
-   artefact rate; see "Step 2" above. `TRIM_MODE=legacy` restores upstream byte
-   for byte (md5-verified on two cells).
+   adapter, the tail located by the **cell barcode** rather than by shape, and
+   real poly-A/poly-G/5'-poly-T runs, instead of cutting at the first run of 6
+   identical bases. +3.6% protein-coding exonic reads at the highest purity of
+   any setting tried; see "Step 2" above. `TRIM_MODE=legacy` restores upstream
+   byte for byte (md5-verified on two cells).
 3. **STAR is run with the genome loaded once** into shared memory for the whole
    run instead of reloading it per cell, because the index is far larger than
    any single cell's reads. A trap frees it even if you Ctrl-C.

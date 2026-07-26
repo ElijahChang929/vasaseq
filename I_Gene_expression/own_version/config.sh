@@ -183,11 +183,32 @@ VASA_REF="${VASA_REF:-/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse
 # its fragile results/ output dir into the curated reference library so it now
 # survives cleaning results/ or re-running nf-core with a different --outdir.
 # Named star_index_151_r116: read length 151 (sjdbOverhang 150), Ensembl rel 116.
-# If it ever goes missing, rebuild via build_mouse_reference.sh.
+#
+# NOTE: build_mouse_reference.sh, which this line used to point at, was deleted
+# once its outputs existed and is gone. If this index goes missing it has to be
+# rebuilt by hand (STAR --runMode genomeGenerate over the same genome.fa +
+# Ensembl 116 GTF), or via the nf-core rnaseq run that originally made it.
+# The rRNA fasta is the one piece with a tracked builder --
+# see build_rrna_reference.sh, and keep new reference builders in the repo.
 STAR_INDEX="${STAR_INDEX:-/nemo/lab/turnerj/working/guangxin/reference/genomes/mus_musculus/GRCm39/star_index_151_r116}"
 
 # rRNA fasta, bwa-indexed (needs the .amb/.ann/.bwt/.pac/.sa files beside it).
-RRNA_FASTA="${RRNA_FASTA:-${VASA_REF}/unique_rRNA_mouse.fa}"
+#
+# v2 (2026-07-26), built by ./build_rrna_reference.sh -- read that script's
+# header for the full rationale. Short version: v1 was Ensembl-only, and because
+# the rDNA array is collapsed in the GRCm39 primary assembly, Ensembl 116 has no
+# Rn28s / Rn45s / Rn5-8s gene at all. Measured on 130 nt reads tiled across the
+# true subunits, v1 caught 0 of 71 28S reads and 1 of 60 5'ETS+ITS1 reads; 28S
+# alone is 4,730 of the 13,400 nt transcript and the most abundant rRNA by mass.
+# v2 = v1 (all 356 Ensembl seqs, unchanged) + the NCBI curated 47S transcript
+# (BK000964.3:1-13403), which is what the paper's Methods actually used
+# ("mouse or human rRNA (National Center for Biotechnology Information)").
+#
+# v2 catches 159/159 of those same simulated subunit reads. Specificity is
+# unchanged: 20,000 simulated protein-coding-exon reads give 0 false positives
+# under BOTH v1 and v2, at 130 nt and at 50 nt -- so the added 13.4 kb costs
+# nothing. v1 is kept beside it as unique_rRNA_mouse.fa for comparison.
+RRNA_FASTA="${RRNA_FASTA:-${VASA_REF}/unique_rRNA_mouse.v2.fa}"
 
 # Intron/exon/tRNA BED with biotype embedded in the gene name.
 REF_BED="${REF_BED:-${VASA_REF}/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.bed}"
@@ -226,6 +247,7 @@ OWN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONCATENATOR="${OWN_DIR}/concatenator.py"
 TRIM_SH="${TRIM_SH:-${OWN_DIR}/trim.sh}"
 TRIM_ANCHOR_PY="${TRIM_ANCHOR_PY:-${OWN_DIR}/trim_bc_anchor.py}"
+STEP2_REPORT="${STEP2_REPORT:-${OWN_DIR}/step2_report.py}"
 
 # --- cluster tools (EasyBuild module tree) -----------------------------------
 EBROOT=/camp/apps/eb/software

@@ -65,7 +65,7 @@ parallel_over_cells() {
     export CELLDIR OUTDIR LOGDIR SAMPLE VASA_SCRIPTS STRANDED REF_BED RRNA_FASTA
     export P2TRIMGALORE P2CUTADAPT P2BWA P2SAMTOOLS P2BEDTOOLS
     export TRIM_SH TRIM_MODE TRIM_ADAPTER3 TRIM_MINLEN TRIM_POLYA TRIM_POLYG TRIM_CUTADAPT
-    export TRIM_ANCHOR_BC TRIM_POLYT5 TRIM_ANCHOR_PY TRIM_PYTHON
+    export TRIM_ANCHOR_BC TRIM_POLYT5 TRIM_ANCHOR_PY TRIM_PYTHON STEP2_REPORT
     cell_list | xargs -P "$NCORES" -I{} bash -c "$fn {}" _
 }
 
@@ -341,6 +341,14 @@ step2_trim() {
     eval "$ML_TRIM"
     parallel_over_cells do_trim
     say "step2 done: $(ls ${CELLDIR}/*_trimmed_homoATCG.fq.gz 2>/dev/null | wc -l) trimmed files"
+    # Per-cell table straight from the logs the run just wrote. Automatic so it
+    # is never reconstructed by hand -- re-run it any time with
+    #   step2_report.py $CELLDIR $LOGDIR
+    if [ -x "$STEP2_REPORT" ] && [ "$TRIM_MODE" != "legacy" ]; then
+        echo
+        env -u PYTHONPATH "$TRIM_PYTHON" "$STEP2_REPORT" "$CELLDIR" "$LOGDIR" \
+            | tee "${LOGDIR}/step2_report.txt"
+    fi
 }
 
 ###############################################################################

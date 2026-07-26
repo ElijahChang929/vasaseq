@@ -114,8 +114,14 @@ fi
 # =============================================================================
 # pass 1 -- TrimGalore, unchanged from upstream
 # =============================================================================
+# --length is passed EXPLICITLY. Without it trim_galore uses its own hardcoded
+# cutoff of 20 (see $length_cutoff in the trim_galore source), which silently
+# dominates TRIM_MINLEN: pass 1 would have already deleted every read below 20
+# before pass 2's -m ever saw it, so lowering TRIM_MINLEN did nothing at all.
+# At the default TRIM_MINLEN=20 this is a no-op -- it only starts to matter when
+# you change it.
 ${path2trimgalore}/trim_galore --path_to_cutadapt "${path2cutadapt}/cutadapt" \
-    "${tg_in}" -o "${outdir}" || exit 1
+    --length "${TRIM_MINLEN}" "${tg_in}" -o "${outdir}" || exit 1
 # TrimGalore names its outputs after the input basename, so when pass 0 ran they
 # come out as *.bcanchor_trimmed.fq.gz. Put them back on the expected stem and
 # drop the intermediate -- everything downstream keys off ${stem}_trimmed*.

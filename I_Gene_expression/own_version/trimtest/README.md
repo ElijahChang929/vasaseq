@@ -40,6 +40,7 @@ than round 5 and is still the better one.
 | `bench_trim8.sh` | round 8: reverse orientation (absent) and 5' poly-T (worth it). **v25** |
 | `bench_trim9.sh` | round 9: sweep how much adapter the cutadapt anchor carries |
 | `bench_trim10.sh` | round 10: do the anchor in python instead. **v26 = adopted** |
+| `bench_trim11.sh` | round 11: sweep the minimum-length floor (20 is a shallow optimum) |
 | `annot_fraction.sh` | where alignments land in the annotation — **the metric that decides** |
 | `bench_bam.sh` | re-maps selected variants keeping the BAM |
 | `aligned_composition.py` | poly-A-only / short / soft-clip breakdown from those BAMs |
@@ -64,6 +65,7 @@ than round 5 and is still the better one.
 | L8…L26 | v25 with the anchor carrying 8/12/16/21/26 nt of adapter |
 | L21 | = v25 at the principled boundary; best the cutadapt anchor can do |
 | **v26** | **`../trim_bc_anchor.py` pass 0 + cutadapt without the anchor pattern — what `trim.sh` runs** |
+| M12…M30 | v26 at minimum-length floors of 12/15/18/20/25/30 (**M20 = adopted**) |
 | v27 | v26 keeping the cutadapt anchor as well — adds nothing, hence deleted |
 
 ## Rebuilding the inputs

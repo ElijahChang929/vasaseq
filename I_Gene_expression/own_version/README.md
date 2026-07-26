@@ -453,6 +453,57 @@ The mirror-image barcode anchor for reverse-orientation reads —
 library has no meaningful reverse population; all of the gain is the poly-T.
 It is not in `trim.sh`; the benchmark is kept so nobody rebuilds it.
 
+### How short a read is still worth keeping (TRIM_MINLEN)
+
+The floor matters more here than it would in most libraries, because the median
+insert before the poly-A is 10 nt. Swept with `trimtest/bench_trim11.sh`, cell
+011, protein-coding exonic reads per 300k:
+
+| floor | unique | in annotation | **exonic (PC)** | purity |
+|---|---|---|---|---|
+| 12 | 76,258 | 87.1% | 41,015 | 53.8% |
+| 15 | 75,909 | 87.1% | 40,938 | 53.9% |
+| 18 | 74,504 | 87.1% | 40,784 | 54.7% |
+| **20** | 73,369 | 87.1% | **40,684** | **55.5%** |
+| 25 | 71,267 | 87.3% | 40,403 | 56.7% |
+| 30 | 69,567 | 87.6% | 40,165 | 57.7% |
+
+**Going below 20 is not worth it, and going above it is not either.** Dropping
+the floor from 20 to 12 recovers 2,889 uniquely mapped reads and only 331 more
+exonic ones — +0.8% yield for −1.7 points of purity. Raising it to 30 costs
+1.3% of exonic reads to buy 2.2 points of purity. The curve is flat: 20 sits in
+the middle of a shallow optimum, not on a cliff.
+
+What the marginal reads are actually made of:
+
+| band | extra unique | extra exonic | exonic share |
+|---|---|---|---|
+| 12–14 | 349 | 77 | 22.1% |
+| 15–17 | 1,405 | 154 | 11.0% |
+| 18–19 | 1,135 | 100 | 8.8% |
+| 20–24 | 2,102 | 281 | 13.4% |
+| 25–29 | 1,700 | 238 | 14.0% |
+
+against a **55.5%** baseline for the library as a whole. Every band in this
+range is 4–6× depleted in exons — these are not reads that were being unfairly
+discarded, they are the same junk population the whole of step 2 is about.
+
+Some arithmetic for why that is unsurprising: a random k-mer occurs ~2.7e9 / 4^k
+times in a mouse genome — 0.63 times at k=16, 0.04 at k=18, 0.0025 at k=20. So
+20 is roughly where uniqueness begins, before accounting for repeats, which
+make it worse. STAR does not protect you either: `outFilterMatchNminOverLread`
+is **relative** (0.66), so a 16 nt read needs only 11 matching bases to be
+reported as an alignment.
+
+⚠️ **`TRIM_MINLEN` did nothing below 20 until 2026-07-26.** `trim_galore`
+hardcodes `$length_cutoff = 20` when `--length` is not passed, and `trim.sh`
+did not pass it — so pass 1 had already deleted every short read before pass 2's
+`-m` saw anything. `trim.sh` now passes `--length "$TRIM_MINLEN"` explicitly;
+at the default 20 this is a verified no-op (md5-identical output). The same
+applies to **upstream**, whose `cutadapt -m 15` is therefore dead code: its
+effective floor has always been 20. `TRIM_MODE=legacy` reproduces that
+faithfully, dead code included.
+
 ### What did *not* work, so you don't retry it
 
 - **Just raising the homopolymer run 6 → 20.** Barely moves anything (73,867

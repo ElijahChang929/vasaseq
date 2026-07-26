@@ -7,7 +7,8 @@
 # that discards more reads can always show a better mapping *rate*; it cannot
 # fake a bigger UNIQ.
 ###############################################################################
-cd "$(dirname "$0")" || exit 1
+# the scripts are versioned in the repo, the results are not -- go to the data
+cd "${TRIMTEST_DIR:-/nemo/lab/turnerj/working/guangxin/vasaseq/data/PM26037/trimtest}" || exit 1
 IN=300000
 
 printf "%-5s %-4s %9s %7s %9s %6s %9s %6s %7s %7s\n" \

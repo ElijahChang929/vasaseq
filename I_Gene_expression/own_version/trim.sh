@@ -157,8 +157,27 @@ fi
 #          makes the blank barcodes look blank. The matching reverse-orientation
 #          barcode anchor was built and measured (trimtest/bench_trim8.sh) and
 #          fired 13 times in 300,000 reads, so it is deliberately absent.
-# -n 3 so poly-A can still be reached after the read-through is removed.
-opts=(-m "${TRIM_MINLEN}" --trim-n -n 3 --poly-a)
+# -n so poly-A can still be reached after the read-through is removed.
+#
+# It is 10, not 3, and that is not slack. `T{20}` is a FIXED 20-mer, not a
+# variable-length run, so each cutadapt pass can strip at most 20 nt of poly-T;
+# -n caps the passes, hence the total at 20*n. With -n 3 that ceiling was 60 nt,
+# and this library's biological read is 130 nt -- so a read that is entirely
+# poly-T came out at 130-60 = 70 nt and survived -m 20.
+#
+# Verified on synthetic pure-T reads: at -n 3, <=70 nt are consumed and dropped,
+# 100 nt leaves 40, 130 nt leaves 70. The longest poly-T actually surviving in
+# the run of 2026-07-26 was exactly 70 nt, and 14.28% of blank cell 016's
+# trimmed reads were >=90% T (poly-A: 0.00%, as it should be). Step 3 then
+# absorbed them as fake rRNA -- they were 52% of that cell's "ribosomal" calls
+# against 1% in real cells, which is what made the blanks' rRNA composition
+# uninterpretable. See README "Step 3".
+#
+# -n 10 raises the ceiling to 200 nt, past the 130 nt read. Measured against
+# 2,000 real reads from cell 011: all poly-T gone, and the real reads come out
+# byte-identical to -n 3 (same 1,997 kept, same 198,535 bases) -- so this costs
+# nothing. `T{130}` also works but over-trims real reads by 12 bp.
+opts=(-m "${TRIM_MINLEN}" --trim-n -n 10 --poly-a)
 [ -n "$TRIM_ADAPTER3" ] && opts+=(-a "rt=${TRIM_ADAPTER3};min_overlap=8")
 [ -n "$TRIM_POLYA"    ] && opts+=(-a "polyA=${TRIM_POLYA};min_overlap=10")
 [ -n "$TRIM_POLYG"    ] && opts+=(-a "polyG=${TRIM_POLYG};min_overlap=10")

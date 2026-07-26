@@ -307,14 +307,28 @@ step1_extract() {
 }
 
 ###############################################################################
-# step2 -- trim adapters/quality, then the 3' read-through
-# TrimGalore first (adapters + Phred<20 from the 3' end), then cutadapt for the
-# read-through construct this library actually carries:
+# step2 -- cut the 3' technical tail, then adapters/quality
+#
+# Three passes, all inside own_version/trim.sh -- NOT ../a_Mapping/trim.sh:
+#   pass 0  trim_bc_anchor.py, finds this read's own barcode and cuts there
+#   pass 1  TrimGalore (adapters + Phred<20)
+#   pass 2  cutadapt for what pass 0 could not anchor, + poly-A/G and 5' poly-T
+# The construct being removed is
 #     [insert][poly-A][12 nt = revcomp(CBC+UMI)][revcomp(R1 5' prefix)+Nextera]
-# This uses own_version/trim.sh, NOT ../a_Mapping/trim.sh -- see that file's
-# header and README.md "Step 2" for why, and TRIM_MODE=legacy in config.sh to
-# get the upstream behaviour back.
+# See trim.sh's header and README.md "Step 2" for why, and TRIM_MODE=legacy in
+# config.sh to get the upstream behaviour back byte for byte.
+#
+# Sizing, MEASURED on the live job rather than guessed (16 cells, NCORES=16):
+# total 17.2 cores and 0.8 GB RSS. Every cell is ONE compute thread -- pass 0's
+# python sits pinned at ~97% of a single core and is single-threaded, so giving
+# a cell a second CPU does not make it finish sooner. The only extra is
+# TrimGalore's gzip helper at 0.6-0.8 of a core, and it is not running for every
+# cell at once. So -c is NCORES plus a little slack for those helpers, and the
+# memory ask is nearly all slack.
 ###############################################################################
+
+# sbatch -c 18 --mem=8G --time=8:00:00 pipeline.sh step2
+
 do_trim() {
     local cell=$1
     # the TRIM_* settings reach trim.sh through parallel_over_cells' export list

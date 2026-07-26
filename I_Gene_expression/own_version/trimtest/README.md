@@ -31,6 +31,7 @@ block (soft clips excluded) ≥80% A or T. The recommendation maximises genuine.
 | `bench_trim3.sh` | round 3: literal adapters with a high `min_overlap`, after wildcards proved harmful |
 | `bench_trim4.sh` | round 4: same, with the read-through adapter **measured** from the reads |
 | `bench_trim5.sh` | round 5: is poly-G free? (yes). **v17 = the adopted setting** |
+| `bench_trim6.sh` | round 6: can the leftover 12 nt barcode remnant be removed? (not worth it) |
 | `bench_bam.sh` | re-maps selected variants keeping the BAM |
 | `aligned_composition.py` | poly-A-only / short / soft-clip breakdown from those BAMs |
 | `summarise_trim.sh` | the comparison table; `VARS="v1 v13 v17" ./summarise_trim.sh` |
@@ -47,6 +48,7 @@ block (soft clips excluded) ≥80% A or T. The recommendation maximises genuine.
 | v9–v12 | literal adapters, `min_overlap=8`; adapter guessed |
 | v13–v16 | as v9–v12 with the **measured** adapter |
 | **v17** | **v14 + poly-G — what `trim.sh` runs in `TRIM_MODE=vasa`** |
+| v18–v20 | v17 plus attempts to remove the leftover 12 nt barcode remnant; all net losses |
 
 ## Rebuilding the inputs
 

@@ -305,6 +305,30 @@ but the extra alignments are poly-A landing on a handful of genomic A-tracts —
 18,044 such reads over 3,637 100-kb bins with 1,054 in the top one. Keep the
 poly-A trim.
 
+### What is actually left in a trimmed read
+
+Measured on the adopted setting, cell 011, 164,798 output reads:
+
+| residue | reads |
+|---|---|
+| adapter still present | 0.26% |
+| contains a poly-A run ≥20 nt | **0.00%** |
+| ends in A≥6 | 1.88% |
+| revcomp(cell barcode) in the last 25 nt | **13.58%** |
+
+So the adapter and every long poly-A are gone, but the 12 nt
+revcomp(CBC+UMI) remnant survives in 13.6% of reads. Understand *why*, because
+it explains the whole design: `A{20}` is a **3' adapter**, so removing the
+poly-A takes everything downstream — the 12 nt included — with it. That only
+happens when there is a ≥20 nt run to match. Where the poly-A is shorter, there
+is no match and both the short run and the 12 nt stay.
+
+The barcode and UMI are already on the read name from step 1, so the remnant is
+pure junk: STAR soft-clips it, but it still counts against
+`outFilterMatchNminOverLread`. Removing it properly was tried and **is not
+worth it** — see the last bullet below. A residual 12 nt on a ~120 nt read is
+cheap; every way of cutting it is not.
+
 ### What did *not* work, so you don't retry it
 
 - **Just raising the homopolymer run 6 → 20.** Barely moves anything (73,867
@@ -314,9 +338,24 @@ poly-A trim.
   adapter match partially at the read end and `N` matches any base, so the last
   ~20 bases of almost any read ending in a couple of A's get eaten for free.
   Wildcards and 3'-partial matching do not mix.
-- **`--nextseq-trim=20`** and **`--poly-a`** (cutadapt's greedy poly-A):
-  `--poly-a` costs ~10,000 genuine reads versus the strict `A{20}` adapter
-  because it eats into A-rich real sequence.
+- **`--nextseq-trim=20`**: costs reads, gains nothing on this flow cell.
+- **`--poly-a` instead of the strict `A{20}` adapter.** It yields *more* reads
+  (95,439 unique, 86,276 genuine, against 84,878/81,717) but nearly triples the
+  poly-A-only rate, 3.7% → 9.6%. The reason is mechanical: `--poly-a` trims a
+  poly-A tail at the **very 3' end**, and after the read-through adapter is
+  removed the 3' end is the 12 nt barcode remnant, not poly-A. It reaches past
+  that only sometimes, so **40.5% of its output still contains a run of ≥20 A**
+  against 0.00% for `A{20}`. Adding `--poly-a` *on top of* `A{20}` changes
+  nothing (84,309 vs 84,860) — there is nothing left for it to do.
+- **Chasing the 12 nt barcode remnant** with `A{10}` + 12 wildcards, at
+  `min_overlap` equal to the full 22 nt so partial 3'-end matching is
+  impossible. It does clean it (13.58% → 3.23% of reads) and it is *still* a
+  net loss: 81,702 → 73,414 genuine reads, and the poly-A-only rate goes **up**,
+  3.7% → 5.9%. Requiring a full match stops the wildcards eating read ends, but
+  the pattern then fires on any internal `AAAAAAAAAA` with 12 bases after it and
+  truncates real mRNA there — upstream's bug again with a longer run. You
+  cannot tell a poly-A tail from an internal A-run once the anchor that
+  distinguished them (the adapter) has been cut off.
 - **Upgrading cutadapt on its own.** 1.18 and 5.1 produce **byte-identical**
   output for the upstream parameters (md5-checked, two cells). 5.1 is needed
   for per-adapter `;min_overlap=`, not for different behaviour.

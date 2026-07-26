@@ -58,6 +58,19 @@ cells_per_chunk=${cells_per_chunk:-24}   # cells mapped per gmap job (1 genome l
 maxpar=${maxpar:-64}                     # %N concurrency cap on the per-cell arrays
 maxpar_gmap=${maxpar_gmap:-8}            # %N cap on the gmap array (each holds ~56G of shm)
 
+### START -- first stage to submit (2=trim, 3=ribo, 4=gmap, 5=b2bs/b2bm).
+### Stages below it are assumed already done and present in $folder; the first
+### stage submitted simply carries no dependency. Use this to re-run the tail of
+### the pipeline after changing something that only affects that tail -- e.g.
+### START=3 with a corrected rRNA reference, which does not touch trimming.
+START=${START:-2}
+
+### RIBOREF -- override the rRNA reference chosen by the MOUSE/HUMAN/MIXED
+### branch below. The branch defaults are the v1 Ensembl-only references; see
+### own_version/build_rrna_reference*.sh for why those are wrong and what
+### replaced them.
+RIBOREF=${RIBOREF:-}
+
 EBROOT=/camp/apps/eb/software
 p2trimgalore=${EBROOT}/Trim_Galore/0.6.2-foss-2018b-Python-3.6.6
 p2cutadapt=${EBROOT}/cutadapt/1.18-foss-2018b-Python-3.6.6/bin
@@ -116,6 +129,7 @@ else
     echo "unknown reference '$ref' (expected MOUSE / HUMAN / MIXED)"
     exit 1
 fi
+if [ -n "$RIBOREF" ]; then riboref=$RIBOREF; fi
 
 ### preflight
 missing=0
@@ -171,40 +185,56 @@ if [ "${DRYRUN:-0}" != "0" ]; then SB="echo [dryrun] sbatch"; fi
 cellsel="cell=\$(sed -n \"\${SLURM_ARRAY_TASK_ID}p\" ${manifest})"
 
 ### STAGE 2 (trim) ----------------------------------------------------------
+jtrim=""; jribo=""; jgmap=""; jb2bs=""; jb2bm=""
+if [ "$START" -le 2 ]; then
 jtrim=$(${SB} --parsable --export=All -N 1 -c 1 -t 05:00:00 --mem=10G \
     -a 1-${ncell}%${maxpar} -J trim-${lib} \
     -e ${folder}/trim-%a.err -o ${folder}/trim-%a.out \
     --wrap="${ml_trim}; ${cellsel}; ${p2s}/trim.sh ${folder}/\${cell}_cbc.fastq.gz ${folder} ${p2trimgalore} ${p2cutadapt}")
 echo "STAGE 2 trim  : ${jtrim}  (array 1-${ncell}%${maxpar})"
+else
+echo "STAGE 2 trim  : SKIPPED (START=${START})"
+fi
 
 ### STAGE 3 (ribo) ----------------------------------------------------------
 # aftercorr: task i starts as soon as task i of trim is done, rather than
 # waiting for the whole trim array -- the stages pipeline per cell.
+if [ "$START" -le 3 ]; then
+dep=""; [ -n "$jtrim" ] && dep="--dependency=aftercorr:${jtrim}"
 jribo=$(${SB} --parsable --export=All -N 1 -c 8 -t 10:00:00 --mem=40G \
-    -a 1-${ncell}%${maxpar} -J ribo-${lib} --dependency=aftercorr:${jtrim} \
+    -a 1-${ncell}%${maxpar} -J ribo-${lib} ${dep} \
     -e ${folder}/ribo-%a.err -o ${folder}/ribo-%a.out \
     --wrap="${ml_ribo}; ${cellsel}; ${p2s}/ribo-bwamem.sh ${riboref} ${folder}/\${cell}_cbc_trimmed_homoATCG.fq.gz ${folder}/\${cell}_cbc_trimmed_homoATCG ${p2bwa} ${p2samtools} y ${p2s}")
-echo "STAGE 3 ribo  : ${jribo}  (array 1-${ncell}%${maxpar}, aftercorr:${jtrim})"
+echo "STAGE 3 ribo  : ${jribo}  (array 1-${ncell}%${maxpar}) ${dep:-(no dependency)}"
+else
+echo "STAGE 3 ribo  : SKIPPED (START=${START})"
+fi
 
 ### STAGE 4 (gmap, batched) --------------------------------------------------
 # --mem=80G: the index is 53 GB and lives in shared memory that is charged to
 # this job's cgroup, plus STAR's own working set. The upstream 40G is what
 # would have OOM'd here.
+if [ "$START" -le 4 ]; then
+dep=""; [ -n "$jribo" ] && dep="--dependency=afterany:${jribo}"
 jgmap=$(${SB} --parsable --export=All -N 1 -c 8 -t 24:00:00 --mem=80G \
-    -a 1-${nchunk}%${maxpar_gmap} -J gmap-${lib} --dependency=afterany:${jribo} \
+    -a 1-${nchunk}%${maxpar_gmap} -J gmap-${lib} ${dep} \
     -e ${folder}/gmap-%a.err -o ${folder}/gmap-%a.out \
     --wrap="${ml_gmap}; ${p2s}/gmap_chunk.sh ${manifest} \${SLURM_ARRAY_TASK_ID} ${cells_per_chunk} ${folder} ${genome} ${p2star} ${p2samtools}")
-echo "STAGE 4 gmap  : ${jgmap}  (array 1-${nchunk}%${maxpar_gmap}, afterany:${jribo})"
+echo "STAGE 4 gmap  : ${jgmap}  (array 1-${nchunk}%${maxpar_gmap}) ${dep:-(no dependency)}"
+else
+echo "STAGE 4 gmap  : SKIPPED (START=${START})"
+fi
 
 ### STAGE 5a (b2bs) / 5b (b2bm) ---------------------------------------------
+dep=""; [ -n "$jgmap" ] && dep="--dependency=afterany:${jgmap}"
 jb2bs=$(${SB} --parsable --export=All -N 1 -c 1 -t 12:00:00 --mem=40G \
-    -a 1-${ncell}%${maxpar} -J b2bs-${lib} --dependency=afterany:${jgmap} \
+    -a 1-${ncell}%${maxpar} -J b2bs-${lib} ${dep} \
     -e ${folder}/b2bs-%a.err -o ${folder}/b2bs-%a.out \
     --wrap="${ml_b2b}; ${cellsel}; ${p2s}/deal_with_singlemappers.sh ${folder}/\${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam ${refBED} y ${p2samtools} ${p2bedtools}")
 echo "STAGE 5a b2bs : ${jb2bs}  (array 1-${ncell}%${maxpar}, afterany:${jgmap})"
 
 jb2bm=$(${SB} --parsable --export=All -N 1 -c 1 -t 10:00:00 --mem=40G \
-    -a 1-${ncell}%${maxpar} -J b2bm-${lib} --dependency=afterany:${jgmap} \
+    -a 1-${ncell}%${maxpar} -J b2bm-${lib} ${dep} \
     -e ${folder}/b2bm-%a.err -o ${folder}/b2bm-%a.out \
     --wrap="${ml_b2b}; ${cellsel}; ${p2s}/deal_with_multimappers.sh ${folder}/\${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam ${refBED} y ${p2samtools} ${p2bedtools}")
 echo "STAGE 5b b2bm : ${jb2bm}  (array 1-${ncell}%${maxpar}, afterany:${jgmap})"
@@ -225,4 +255,4 @@ jpick=$(${SB} --parsable --export=All -c 1 -t 15:00:00 --mem=160G \
 echo "STAGE 7 pick  : ${jpick}  (afterany:${jcout})"
 
 echo ""
-echo "submitted. cancel everything with:  scancel ${jtrim} ${jribo} ${jgmap} ${jb2bs} ${jb2bm} ${jcout} ${jpick}"
+echo "submitted. cancel everything with:  scancel $(echo ${jtrim} ${jribo} ${jgmap} ${jb2bs} ${jb2bm} ${jcout} ${jpick} | tr -s ' ')"

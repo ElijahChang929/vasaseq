@@ -36,6 +36,17 @@ FASTQ_DIR="${FASTQ_DIR:-/nemo/lab/turnerj/working/guangxin/vasaseq/data/PM26037}
 # input fastqs are 30 GB, so budget ~120 GB here.
 OUTDIR="${OUTDIR:-/nemo/lab/turnerj/working/guangxin/vasaseq/data/PM26037/out}"
 
+# Throwaway files that are NOT results. Currently just step4: STAR's
+# --genomeLoad LoadAndExit / Remove calls still insist on writing a Log.out and
+# Log.progress.out, which we discard. Keeping them out of OUTDIR means a run
+# killed mid-step4 leaves no .star.XXXXXX dirs sitting next to the count tables.
+# Anything here is safe to delete at any time; nothing downstream reads it.
+#
+# Default is the lab scratch, which is the same directory under either mount
+# (/nemo/lab/turnerj/scratch/zhangg and /flask/scratch/turnerj/zhangg are one
+# inode, verified 2026-07-26) and is writable via ACL, not group.
+SCRATCH="${SCRATCH:-/nemo/lab/turnerj/scratch/zhangg/vasaseq}"
+
 # =============================================================================
 # EDIT ME -- read structure
 # =============================================================================
@@ -163,9 +174,15 @@ CELLID_FROM="${CELLID_FROM:-f}"
 
 # ZHA9292A1 is mouse (fastq_screen on R2: 7.8% unique to MOUSE vs 0.6% HUMAN),
 # so the human+mouse MIXED reference built for the published mixing control is
-# the wrong reference here -- wrong species set AND wrong read length. All
-# three paths below are built by ./build_mouse_reference.sh, on GRCm39 +
-# Ensembl 116 to match the nf-core rnaseq run.
+# the wrong reference here -- wrong species set AND wrong read length. All three
+# paths below are GRCm39 + Ensembl 116, matching the nf-core rnaseq run so the
+# two analyses stay comparable.
+#
+# Only ONE of the three still has a build script: the rRNA fasta, via
+# ./build_rrna_reference.sh. The STAR index and the BED were made by
+# build_mouse_reference.sh, which was deleted once its outputs existed -- so
+# they exist but cannot be reproduced. Do not repeat that: new reference
+# builders go in this directory, in git.
 VASA_REF="${VASA_REF:-/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116}"
 
 # STAR index. sjdbOverhang must be >= (biological read length after SKIP5) - 1:
@@ -248,6 +265,7 @@ CONCATENATOR="${OWN_DIR}/concatenator.py"
 TRIM_SH="${TRIM_SH:-${OWN_DIR}/trim.sh}"
 TRIM_ANCHOR_PY="${TRIM_ANCHOR_PY:-${OWN_DIR}/trim_bc_anchor.py}"
 STEP2_REPORT="${STEP2_REPORT:-${OWN_DIR}/step2_report.py}"
+STEP3_REPORT="${STEP3_REPORT:-${OWN_DIR}/step3_report.py}"
 
 # --- cluster tools (EasyBuild module tree) -----------------------------------
 EBROOT=/camp/apps/eb/software

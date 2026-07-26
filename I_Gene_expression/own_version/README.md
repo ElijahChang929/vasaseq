@@ -15,16 +15,20 @@ Files here:
 | `concatenator.py` | Forked demultiplexer — the barcode geometry change. |
 | `trim.sh` | Forked step 2 — three passes. See "Step 2" below. |
 | `trim_bc_anchor.py` | Step 2 pass 0: cuts the 3' tail by finding the read's own barcode. |
+| `step2_report.py` | Per-cell trimming table, written by step 2 itself. |
+| `step3_report.py` | Per-cell rRNA table, written by step 3 itself. |
+| `build_rrna_reference.sh` | Builds the rRNA fasta. See "Step 3" and "Reference". |
 | `bc_PM26037_6nt.tsv` | Cell-barcode whitelist for this library (16 × 6 nt). |
 | `trimtest/` | The step-2 trimming benchmark and its results. |
 | `README.md` | This file. |
 
-⚠️ `build_mouse_reference.sh` is referenced below but **is not in this
-directory and is not anywhere on the filesystem** — it was lost, not
-committed, or never written. The three reference files it was supposed to
-build do all exist and `./pipeline.sh check` passes, so nothing is blocked;
-but if the reference ever has to be rebuilt, that script has to be written
-again first.
+⚠️ `build_mouse_reference.sh` — which built the STAR index and the annotation
+BED — **was deleted and is nowhere on the filesystem.** Both outputs still
+exist and `./pipeline.sh check` passes, so nothing is blocked, but neither has
+any provenance and neither can be rebuilt without writing the script again.
+Its third output, the rRNA fasta, turned out to be **wrong** as well as
+unreproducible; that one has been rebuilt and now has a tracked builder
+(`build_rrna_reference.sh`). See "Step 3".
 
 Everything else (rRNA removal, gene assignment, count tables) is called **in
 place** from `../a_Mapping/`. Those scripts are unchanged and already work, so
@@ -82,13 +86,30 @@ last two bases (`AGCTAG`/`AGCTCA`, `CATGAG`/`CATGCA`, `TGTCAC`/`TGTCGA`), so
 ### Reference
 
 Mouse-only, **GRCm39 + Ensembl 116** — the same build as the nf-core rnaseq
-run, so the two analyses stay comparable. Built once by
-`sbatch build_mouse_reference.sh` into
-`/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116/`:
+run, so the two analyses stay comparable. Three files, in two places:
 
-- `star_index_130/` — `sjdbOverhang 129`
-- `unique_rRNA_mouse.fa` (+ bwa index) — 356 rRNA / Mt_rRNA gene seqs
-- `Mus_musculus.GRCm39.116.homemade_IntronExonTrna.bed` — 718 272 rows
+| What | Where | Built by |
+|---|---|---|
+| STAR index | `reference/genomes/mus_musculus/GRCm39/star_index_151_r116/` | the nf-core rnaseq run (shared, not a second copy) |
+| rRNA fasta | `reference/vasaseq/mouse_GRCm39_E116/unique_rRNA_mouse.v2.fa` | `build_rrna_reference.sh` |
+| annotation BED | `reference/vasaseq/mouse_GRCm39_E116/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.bed` — 718 272 rows | *(builder lost, see below)* |
+
+`config.sh` points at all three; `./pipeline.sh check` verifies them.
+
+The STAR index has `sjdbOverhang 150`, not 129. It is the FLASH-seq run's index,
+reused rather than duplicated — same `genome.fa`, same Ensembl 116 GTF, same
+562 855 junctions. An overhang **larger** than `readLength-1` is harmless (STAR
+stores flanking sequence it never uses); one too small silently costs
+junction-spanning sensitivity, which is why `pipeline.sh check` enforces `>=`
+and not `==`.
+
+> ⚠️ **`build_mouse_reference.sh` no longer exists.** It was deleted once its
+> outputs were on disk, which left the STAR index and the BED with no record of
+> how they were made — their provenance had to be reverse-engineered from a
+> SLURM log. If either goes missing it has to be rebuilt by hand. **Keep
+> reference builders in this repo.** `build_rrna_reference.sh` is the one that
+> is done right: tracked here, idempotent, and it writes a
+> `rrna_v2.provenance.txt` next to its output.
 
 The human+mouse `mixed/` reference built for the published species-mixing
 control is **the wrong reference here** — wrong species set *and* wrong read
@@ -99,8 +120,9 @@ length (`sjdbOverhang 73`).
 ## Quick start
 
 ```bash
-# 0. once only: build the mouse reference (~1 h, mostly the STAR index)
-sbatch build_mouse_reference.sh
+# 0. once only: build the rRNA reference (~2 min). The STAR index and the BED
+#    already exist -- see "Reference" above.
+./build_rrna_reference.sh
 
 # 1. config.sh is already set for ZHA9292A1 -- edit it only for a new library
 # 2. verify everything exists BEFORE running anything
@@ -132,7 +154,7 @@ Each step's output is the next step's input. That is the whole design.
 |---|---|---|
 | `step1` extract | strips the 21 nt prefix, moves cell barcode + UMI onto the **read name**, splits into one fastq per cell | `cells/<sample>_<cell>_cbc.fastq.gz` |
 | `step2` trim | TrimGalore (adapters, Q<20) then cutadapt: 3' read-through, tail located by the cell barcode, poly-A/G/T — see "Step 2" | `..._cbc_trimmed_homoATCG.fq.gz` |
-| `step3` ribo | removes rRNA using **both** `bwa aln` and `bwa mem` | `....nonRibo.fastq.gz` |
+| `step3` ribo | removes rRNA using **both** `bwa aln` and `bwa mem` — see "Step 3" | `....nonRibo.fastq.gz`, `logs/step3_report.txt` |
 | `step4` map | STAR to the genome, multimappers kept | `..._E99_Aligned.out.bam` |
 | `step5` assign | intersects reads with the annotation BED, unique + multi separately | `*_genes.bed.gz` |
 | `step6` pickle | collapses **all** cells into one UMI-aware structure | `<sample>.pickle.gz` |
@@ -190,6 +212,11 @@ the GRCm39 STAR index needs ~30 GB resident on top of step 6's appetite.
 merging, so it transiently needs roughly 3× the 30 GB of input on top of the
 final per-cell output. Budget ~120 GB in `$OUTDIR`; it is cleaned up when
 step 1 finishes.
+
+Step 4's throwaway files go to `$SCRATCH` (lab scratch by default), not
+`$OUTDIR` — they are only the logs STAR insists on writing for its
+`--genomeLoad LoadAndExit` / `Remove` calls. Nothing downstream reads
+`$SCRATCH`; delete it whenever you like.
 
 ---
 
@@ -491,6 +518,159 @@ TrimGalore's own pass still drives the module's 1.18.
 
 ---
 
+## Step 3: rRNA depletion, and why the reference was rebuilt
+
+Step 3 maps every trimmed read against a small rRNA fasta with **both**
+`bwa aln` and `bwa mem`, and keeps only the reads that neither aligner placed.
+`riboread-selection.py` makes the call, and two of its properties are worth
+knowing before you tune anything:
+
+- **MAPQ is never consulted.** One hit of any quality is fatal. This is
+  deliberate — rRNA-derived mapping artefacts otherwise pollute small-ncRNA
+  quantification — but it means the *reference contents* decide everything.
+- **Stranded (`STRANDED=y`) gives one reprieve:** a read whose only hits are on
+  the reverse strand is kept, since VASA is stranded and a real rRNA read must
+  be sense.
+
+There is also a harmless off-by-one: a read group is only flushed when the
+*next* read name appears, so the final group of each file is counted in the log
+total but written nowhere. `in = ribo + kept + 1`, one read per cell.
+
+### The reference was wrong, and it was wrong in a specific way
+
+v1 (`unique_rRNA_mouse.fa`) was built by grepping the Ensembl 116 GTF for
+`gene_biotype` in `{rRNA, Mt_rRNA}`. That cannot work, because **the rDNA repeat
+array is collapsed in the GRCm39 primary assembly**. Ensembl 116 mouse has no
+`Rn28s`, no `Rn45s` and no `Rn5-8s` gene at all — only dispersed 5S/5.8S copies
+and fragments, median length 116 nt. The single 18S entry (`Rn18s-rs5`) is a
+dispersed related-sequence copy, not the rDNA locus.
+
+The paper did something different. Methods says the rRNA sequences came from
+**NCBI**, and `../a_Mapping/README.md` names them: mouse `Rn45s, Rn6s, 12s, 16s,
+47s`. That is a handful of *full-length pre-rRNA transcripts*, not an annotation
+dump.
+
+Measured, by tiling 130 nt reads across the true subunits and running them
+through the real `ribo-bwamem.sh`:
+
+| subunit | caught by v1 | caught by v2 |
+|---|---|---|
+| 18S | 27 / 27 | 27 / 27 |
+| 5.8S | 1 / 1 | 1 / 1 |
+| **28S** | **0 / 71** | **71 / 71** |
+| **5'ETS + ITS1** | **1 / 60** | **60 / 60** |
+
+28S is 4 730 of the 13 400 nt transcript and the most abundant rRNA by mass.
+
+### v2 = v1 + the NCBI 47S unit
+
+`build_rrna_reference.sh` (tracked here, idempotent) keeps all 356 Ensembl
+sequences unchanged and adds one: `BK000964.3:1-13403`, the **transcribed**
+portion of the mouse rDNA repeating unit. Two deliberate choices:
+
+- **One sequence, not seven.** Reads straddling a subunit boundary (18S/ITS1,
+  ITS2/28S) still align cleanly. QC decomposition is recovered by *position*
+  instead, via `rrna_intervals.tsv`.
+- **IGS excluded.** `BK000964.3` is 45 306 bp; everything past 13 403 is
+  intergenic spacer, never transcribed, dense with SINE/LINE repeats. Including
+  it would let any repeat-containing mRNA be deleted — and remember MAPQ is not
+  checked.
+
+**Adding 13.4 kb costs nothing in specificity.** 20 000 simulated
+protein-coding-exon reads give **0 false positives under both v1 and v2**, at
+130 nt *and* at 50 nt.
+
+### Both aligners are load-bearing — don't "simplify" to one
+
+`bwa mem` will not report an alignment scoring below 30 (`-T` default, match
+score 1), so **a read under ~30 nt is invisible to it** however well it matches.
+**20.2% of this library's trimmed reads are under 30 nt.** The aln-only group is
+therefore large and short-read-dominated — on cell 001, 18 478 reads averaging
+24.4 nt, 87% of them under 30 nt, which is 49% of that cell's entire rRNA
+detection. Delete `bwa aln` and all of it leaks silently into step 4.
+
+### Reading the output
+
+`step3_report.py` runs automatically at the end of step 3 and writes
+`logs/step3_report.txt`; re-run it by hand any time with
+`step3_report.py $CELLDIR`. Table 1 is depletion plus the aligner split, table 2
+is where the ribosomal reads landed within the 47S unit.
+
+**Blank wells are processed and reported exactly like real ones** — same
+reference, same thresholds, no special-casing. Their numbers *are* the control.
+
+A high 5'ETS + ITS share is not automatically an error: those sequences exist
+only in unprocessed pre-rRNA, and a total-RNA protocol is supposed to see them.
+But check *where* in the 5'ETS the reads land before believing it — see the
+poly-T leak below.
+
+### Results, ZHA9292A1 (job 50787728, 2026-07-26)
+
+91 278 186 reads in, **19 651 779 ribosomal (21.53%)**, 71 626 391 kept. Full
+tables in `logs/step3_report.txt`; this is the summary.
+
+| cell | in | ribo | ribo% | | cell | in | ribo | ribo% |
+|---|---|---|---|---|---|---|---|---|
+| 001 ° | 310 187 | 37 672 | 12.14% | | 009 | 7 118 197 | 1 490 858 | 20.94% |
+| 002 | 2 663 188 | 485 404 | 18.23% | | 010 | 13 403 380 | 2 897 407 | 21.62% |
+| 003 | 4 620 209 | 1 163 921 | 25.19% | | 011 | 13 745 250 | 3 102 999 | 22.58% |
+| 004 | 3 630 162 | 760 008 | 20.94% | | 012 | 11 198 983 | 2 522 288 | 22.52% |
+| 005 | 3 101 023 | 648 321 | 20.91% | | 013 | 10 525 798 | 2 314 347 | 21.99% |
+| 006 | 4 834 005 | 943 141 | 19.51% | | 014 ° | 374 512 | 32 656 | 8.72% |
+| 007 | 9 260 723 | 2 040 952 | 22.04% | | 015 ° | 433 438 | 46 298 | 10.68% |
+| 008 | 5 836 399 | 1 140 364 | 19.54% | | 016 ° | 222 732 | 25 143 | 11.29% |
+
+° the four low-count wells.
+
+The twelve real cells sit in a tight **18.2–25.2%** band, which is the reassuring
+part — a per-cell rRNA fraction that varied wildly would mean the reference or
+the barcodes were wrong. Composition is equally consistent across them: 28S
+50–55%, 5'ETS 17–20%, mito 1.8–3.4%.
+
+### The four blanks look different, and it is a poly-T artefact — not biology
+
+The low-count wells report a *lower* ribo% but a wildly different composition:
+5'ETS 31–62% against the real cells' 17–20%. That is not extra pre-rRNA.
+Binning the 5'ETS hits by position:
+
+- cell 016 (blank): **88.9% of them in one 200 nt window** (400–599)
+- cell 011 (real): spread across the whole 4 kb, busiest bin only 10.5%
+
+The reads in that window are **pure poly-T**, aligning to a T-rich stretch at
+~414–424. Poly-T as a share of each cell's ribo calls:
+
+| | 016 | 014 | 015 | 001 | | 011 | 007 |
+|---|---|---|---|---|---|---|---|
+| ≥90% T | **52.0%** | 38.2% | 25.8% | 19.6% | | 1.1% | 1.0% |
+
+Absolute counts are similar everywhere (7k–34k per cell), i.e. a constant
+background that only *looks* large in a near-empty well.
+
+**Root cause is in step 2, not step 3.** `-g "polyT5=T{20}"` is a fixed 20-mer,
+not a variable-length run, and `-n 3` caps cutadapt at three passes — so at most
+**3 × 20 = 60 nt** of poly-T can ever be removed. Verified on synthetic pure-T
+reads: ≤70 nt are consumed and dropped, 100 nt leaves 40, 130 nt leaves 70. The
+longest poly-T surviving in the real data is **exactly 70 nt** = 130 − 60, and
+130 nt is this library's biological read length. 14.28% of cell 016's trimmed
+reads are ≥90% T; poly-A is 0.00%, as it should be.
+
+**Fix, measured against 2 000 real reads from cell 011:**
+
+| | poly-T surviving | real reads kept | real bases kept |
+|---|---|---|---|
+| `-n 3` (current) | 2 of 9 | 1 997 | 198 535 |
+| **`-n 10`** | **0** | 1 997 | **198 535** (identical) |
+| `T{130}`, `-n 3` | 0 | 1 997 | 198 523 (12 bp over-trimmed) |
+
+`-n 10` is the clean one: it removes all of it and touches nothing else.
+
+**Not yet applied** — it means re-running steps 2 and 3. It is also not urgent:
+step 3 is absorbing these reads as "rRNA" anyway, so they never reach STAR. What
+it currently costs is only that the blanks' ribo% and composition are
+uninterpretable. Fix it before the numbers are used for anything.
+
+---
+
 ## What was actually changed vs. the published pipeline
 
 1. **`concatenator.py`** — strips `--skip5` nt from both mates before parsing
@@ -506,9 +686,23 @@ TrimGalore's own pass still drives the module's 1.18.
    byte for byte (md5-verified on two cells).
 3. **STAR is run with the genome loaded once** into shared memory for the whole
    run instead of reloading it per cell, because the index is far larger than
-   any single cell's reads. A trap frees it even if you Ctrl-C.
+   any single cell's reads. A trap frees it even if you Ctrl-C. The two
+   bookkeeping calls (`LoadAndExit`, `Remove`) still write logs nobody reads;
+   those go to `$SCRATCH`, not `$OUTDIR`. Note the trap's scope is the subshell
+   `pipeline.sh` runs each step in, so `./pipeline.sh step4` releases the
+   segment immediately while `./pipeline.sh all` holds it until step 7 exits.
 4. **`pipeline.sh check` measures read length with `sed -n '2{p;q}'`, not
    `sed -n 2p`.** Without the `q` sed drains the whole stream, so `check`
    decompressed all 15 GB of each fastq just to read one line — minutes instead
    of milliseconds. Same output, and it matters at this file size.
-5. Everything else is the published pipeline, called unchanged.
+5. **The rRNA reference was rebuilt** (`unique_rRNA_mouse.v2.fa`). The Ensembl
+   biotype dump used first contained no 28S and no ETS/ITS, because the rDNA
+   array is collapsed in GRCm39; the paper used full-length NCBI pre-rRNA
+   instead. v2 restores that by adding `BK000964.3:1-13403`, at zero cost in
+   specificity. See "Step 3" above. The two upstream scripts it feeds
+   (`ribo-bwamem.sh`, `riboread-selection.py`) are unchanged — except for a
+   pre-existing path bug in the former, fixed earlier (`${fq##*/}`, not
+   `${fq#*/}`, which broke any absolute path).
+6. **`step2_report.py` / `step3_report.py`** — per-cell tables generated by the
+   run itself, so no number in this README has to be reconstructed by hand.
+7. Everything else is the published pipeline, called unchanged.

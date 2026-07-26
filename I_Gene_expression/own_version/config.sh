@@ -139,26 +139,18 @@ TRIM_ADAPTER3="${TRIM_ADAPTER3:-GATCGTCGGACTGTAGAACTCCTGTCTCTTATACACATCT}"
 # about the shortest that still maps somewhere believable.
 TRIM_MINLEN="${TRIM_MINLEN:-20}"
 
-# Anchor the trim on the cell barcode. The 3' tail does not have to be
-# recognised by its shape -- step 1 already recorded the barcode and UMI on the
-# read name, and within one cell's fastq the barcode is constant, so the tail is
-# a known 28 nt pattern with only the UMI unknown. trim.sh reads the barcode off
-# the first read's CB: tag; nothing to configure. Set to "no" to switch it off.
-# Effect: barcode remnant in the output drops 13.6% -> 2.2%, and poly-A tails
-# shorter than 20 nt get cleaned, which TRIM_POLYA alone cannot do.
+# Anchor the trim on the cell barcode (pass 0, trim_bc_anchor.py). The 3' tail
+# does not have to be recognised by its shape: step 1 already put the barcode
+# and the UMI on the read name, so for any given read the 12 nt after the
+# poly-A are a known literal string. Find it, drop everything from there to the
+# 3' end, walk back over the poly-A. Nothing to configure, and no threshold to
+# tune -- set this to "no" to switch pass 0 off entirely.
+#
+# Effect: barcode remnant in the output drops 13.6% -> ~2%, poly-A tails
+# shorter than 20 nt get cleaned (which TRIM_POLYA structurally cannot do), and
+# purity rises from 54.2% to 55.5% protein-coding exonic at equal yield.
 TRIM_ANCHOR_BC="${TRIM_ANCHOR_BC:-yes}"
 
-# How much of TRIM_ADAPTER3 the anchor carries. 21 is not arbitrary:
-# TRIM_ADAPTER3[:21] is EXACTLY revcomp(the 21 nt prefix SKIP5 strips off R1),
-# and everything past 21 is the Nextera mosaic end -- so it is the same 21 nt
-# seen at both ends of the molecule, and the value to remember is just SKIP5.
-# Measured (round 9, cell 011): 12 / 16 / 21 all give 40,678-40,681
-# protein-coding exonic reads -- equal to within 3 reads, a flat plateau. Go
-# outside it and the anchor stops firing: at 26 the pattern no longer fits
-# inside most reads (12,760 hits vs 80,697 at 21), and at 8 the 40 nt `rt`
-# adapter outscores it and takes the match instead (12,080 hits). Both then
-# leave the 12 nt remnant behind and purity drops back to ~51%.
-TRIM_ANCHOR_ADLEN="${TRIM_ANCHOR_ADLEN:-21}"
 
 # Where cell IDs in the final count table come from:
 #   f = from the filename  (ids look like "cells/MYSAMPLE_001")
@@ -233,6 +225,7 @@ VASA_SCRIPTS="${VASA_SCRIPTS:-/nemo/lab/turnerj/working/guangxin/vasaseq/code/I_
 OWN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONCATENATOR="${OWN_DIR}/concatenator.py"
 TRIM_SH="${TRIM_SH:-${OWN_DIR}/trim.sh}"
+TRIM_ANCHOR_PY="${TRIM_ANCHOR_PY:-${OWN_DIR}/trim_bc_anchor.py}"
 
 # --- cluster tools (EasyBuild module tree) -----------------------------------
 EBROOT=/camp/apps/eb/software
@@ -262,6 +255,7 @@ CONDA_ENV="${CONDA_ENV:-/nemo/lab/turnerj/working/guangxin/envs/vasa}"
 # absolute path so it never has to win a PATH fight with the Trim_Galore
 # module -- TrimGalore's own pass still drives the module's cutadapt 1.18.
 TRIM_CUTADAPT="${TRIM_CUTADAPT:-${CONDA_ENV}/bin/cutadapt}"
+TRIM_PYTHON="${TRIM_PYTHON:-${CONDA_ENV}/bin/python3}"   # runs pass 0
 CONDA_ACTIVATE="source ${EBROOT}/Anaconda3/2024.10-1/etc/profile.d/conda.sh; conda activate ${CONDA_ENV}"
 # bwa/samtools are called by absolute path, so loading modules + conda together
 # is safe here: conda's python leads on PATH, the binaries resolve absolutely.

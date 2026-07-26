@@ -13,7 +13,8 @@ Files here:
 | `config.sh` | **The only file you normally edit.** All paths and settings. |
 | `pipeline.sh` | The seven steps. Run one at a time, or `all`. |
 | `concatenator.py` | Forked demultiplexer — the barcode geometry change. |
-| `trim.sh` | Forked step 2. See "Step 2" below — this one is worth reading. |
+| `trim.sh` | Forked step 2 — three passes. See "Step 2" below. |
+| `trim_bc_anchor.py` | Step 2 pass 0: cuts the 3' tail by finding the read's own barcode. |
 | `bc_PM26037_6nt.tsv` | Cell-barcode whitelist for this library (16 × 6 nt). |
 | `trimtest/` | The step-2 trimming benchmark and its results. |
 | `README.md` | This file. |
@@ -306,11 +307,12 @@ final score, and the adopted setting deliberately scores lower on it. See
 |---|---|---|---|---|---|
 | upstream | 74,779 | 63,911 | 85.5% | 39,252 | 52.5% |
 | adapter + poly-A | 84,860 | 69,750 | 82.2% | 40,968 | 48.3% |
-| + barcode anchor | 78,171 | 65,746 | 84.1% | 40,602 | 51.9% |
-| **adopted, + 5' poly-T** | 74,808 | 63,896 | 85.4% | **40,678** | **54.4%** |
+| + barcode anchor, in cutadapt | 78,171 | 65,746 | 84.1% | 40,602 | 51.9% |
+| + 5' poly-T | 75,105 | 63,902 | 85.1% | 40,678 | 54.2% |
+| **adopted: anchor in pass 0** | 73,369 | 63,926 | **87.1%** | **40,684** | **55.5%** |
 
-+3.6% protein-coding exonic reads over upstream at the highest purity of any
-setting tried. Cell 007 tracks cell 011 throughout. Splice junctions 18,700 →
++3.7% protein-coding exonic reads over upstream at the highest purity of any
+setting tried, from the simplest of the settings tried. Cell 007 tracks cell 011 throughout. Splice junctions 18,700 →
 19,400.
 
 The third row is the trap. Dropping `TRIM_POLYA` looks like +45% unique reads,
@@ -367,59 +369,46 @@ pure junk. Two ways of removing it by *shape* were tried and both cost more
 than they gained (see the bullets below). What works is removing it by
 **identity**:
 
-### The barcode anchor
+### The barcode anchor — `trim_bc_anchor.py`
 
-The tail does not have to be recognised by its shape — we know what follows it.
-`concatenator.py` put the cell barcode and UMI on the read name at step 1, and
-within one cell's fastq the barcode is **constant** (verified: a per-cell file
-has exactly one distinct `CB` tag). So per cell the whole tail is a fixed
-28 nt pattern with only the UMI unknown:
+The tail never had to be recognised by its shape. Step 1 put the cell barcode
+and the UMI on the read name, so for any given read the 12 nt after the poly-A
+are a **known literal string**, not a pattern:
 
 ```
-revcomp(CBC)  N x LEN_UMI  <first TRIM_ANCHOR_ADLEN nt of the adapter>
- 6 specific     6 any                21 specific        = 27 specific of 33
+[insert][poly-A][ revcomp(CBC) revcomp(UMI) ][adapter ...]
+                 \____ 12 nt, known per read ____/
 ```
 
-`TRIM_ANCHOR_ADLEN` is **21, and that is not a free parameter**:
-`TRIM_ADAPTER3[:21]` is *exactly* `revcomp(the 21 nt prefix SKIP5 strips off
-R1)`, with the Nextera mosaic end starting at 22. It is the same 21 nt seen at
-both ends of the molecule, so the number to remember is just `SKIP5`.
+Pass 0 finds it, drops everything from there to the 3' end, and walks back over
+the poly-A. That is the whole algorithm. No adapter needed, no `min_overlap`,
+no threshold to tune. Chance-hit probability is 4⁻¹², about 2 expected false
+hits per 300,000 reads.
 
-It was swept anyway (round 9, cell 011), because longer is not automatically
-better — `min_overlap` is the anchor's full length, so a bigger value demands
-that more adapter was actually sequenced before the anchor can fire:
+It fires on **29.6%** of reads, of which 79% match exactly and the rest within
+one mismatch or as a partial anchor at the read end.
 
-| adapter nt in anchor | anchor fires | protein-coding exonic | purity |
-|---|---|---|---|
-| 8 | 12,080 | 41,015 | 51.0% |
-| 12 | 77,981 | 40,681 | 54.2% |
-| 16 | 84,689 | 40,678 | 54.4% |
-| **21** | **80,697** | **40,678** | **54.2%** |
-| 26 | 12,760 | 41,020 | 50.4% |
+**This replaced a much more elaborate version, and the history is worth
+keeping.** Rounds 7–9 did the anchor inside cutadapt, which cannot take a
+per-read pattern. The UMI therefore became 6 wildcards; wildcards had to run at
+`min_overlap` = the whole pattern length or they ate the end of every read; and
+that forced 21 nt of adapter into the pattern, so it only fired when the read
+had sequenced that far. Every one of those constraints was a tool limitation,
+not biology. Head to head on cell 011:
 
-12/16/21 are a flat plateau — equal to within 3 exonic reads — so the
-principled boundary costs nothing. Outside it the anchor stops working and you
-fall back to the round-5 behaviour: at 26 the 38 nt pattern no longer fits
-inside most reads; at 8 the 40 nt `rt` adapter outscores the 20 nt anchor and
-takes the match instead. Both leave the remnant behind and purity drops to
-~51%.
+| | anchor fires | unique | in annotation | **exonic (PC)** | purity |
+|---|---|---|---|---|---|
+| anchor inside cutadapt | 26.9% | 75,105 | 85.1% | 40,678 | 54.2% |
+| **`trim_bc_anchor.py`** | **29.6%** | 73,369 | **87.1%** | **40,684** | **55.5%** |
+| both together | — | 72,822 | 87.3% | 40,651 | 55.8% |
 
-`trim.sh` reads the barcode off the first read's `CB:` tag — not the filename,
-not the whitelist order — so it cannot silently pair a cell with the wrong
-barcode. `min_overlap` is set to the anchor's full length, which forbids
-partial 3'-end matching; that is the difference between this and the round-2
-wildcard disaster below. With full-length matching required, 27 specific bases
-make a chance hit impossible.
+Equal exonic yield, higher purity, and far simpler. Running both adds nothing,
+so the cutadapt pattern was deleted along with its `TRIM_ANCHOR_ADLEN`
+parameter and the sweep that justified it.
 
-The point is what it unlocks. Once the anchor is gone the poly-A is at the very
-3' **end** of the read, which is the only place `--poly-a` looks — so tails
-*shorter* than 20 nt, which `A{20}` structurally cannot catch, get cleaned too.
-Barcode remnant in the output: **13.6% → 2.2%**.
-
-It does not increase yield — protein-coding exonic reads go 40,968 → 40,602,
-i.e. flat. What it buys is that the reads which disappear are the ones that were
-mostly barcode. That is the whole argument, and it is why the scoreboard above
-had to change from "unique reads" to "exonic reads".
+Note what pass 0 reaches that the pattern could not: a read that **ends partway
+through the barcode**. cutadapt needed the whole pattern inside the read; a
+literal string can be matched as a prefix running off the 3' end.
 
 ### 5' poly-T, and the reverse orientation
 
@@ -488,7 +477,7 @@ All in `config.sh`; `TRIM_MODE=legacy` restores upstream byte-for-byte
 
 ```bash
 TRIM_MODE=legacy   ./pipeline.sh step2    # upstream behaviour
-TRIM_ANCHOR_BC=no  ./pipeline.sh step2    # no barcode anchor
+TRIM_ANCHOR_BC=no  ./pipeline.sh step2    # skip pass 0 (the barcode anchor)
 TRIM_POLYT5=       ./pipeline.sh step2    # no 5' poly-T trim
 TRIM_POLYA=        ./pipeline.sh step2    # disable the poly-A trim (don't)
 ```

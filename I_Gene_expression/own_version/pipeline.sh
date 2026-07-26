@@ -65,7 +65,7 @@ parallel_over_cells() {
     export CELLDIR OUTDIR LOGDIR SAMPLE VASA_SCRIPTS STRANDED REF_BED RRNA_FASTA
     export P2TRIMGALORE P2CUTADAPT P2BWA P2SAMTOOLS P2BEDTOOLS
     export TRIM_SH TRIM_MODE TRIM_ADAPTER3 TRIM_MINLEN TRIM_POLYA TRIM_POLYG TRIM_CUTADAPT
-    export TRIM_ANCHOR_BC TRIM_LEN_UMI LEN_UMI TRIM_POLYT5 TRIM_ANCHOR_ADLEN
+    export TRIM_ANCHOR_BC TRIM_POLYT5 TRIM_ANCHOR_PY TRIM_PYTHON
     cell_list | xargs -P "$NCORES" -I{} bash -c "$fn {}" _
 }
 
@@ -116,7 +116,7 @@ step_check() {
     done
 
     # -- our own + borrowed scripts --
-    for own in "$CONCATENATOR" "$TRIM_SH"; do
+    for own in "$CONCATENATOR" "$TRIM_SH" "$TRIM_ANCHOR_PY"; do
         [ -x "$own" ] && echo "  OK   $own" || { echo "  MISS/NOT-EXEC $own"; bad=1; }
     done
     # trim.sh is ours now, so it is not in this list

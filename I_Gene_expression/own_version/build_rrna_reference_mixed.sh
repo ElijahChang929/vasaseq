@@ -77,7 +77,9 @@
 # -----------------
 #   unique_rRNA_human_mouse.v2.fa (+ bwa index)   <- point riboref here
 #   rrna_intervals_mixed.tsv                      subunit coords, both species
-#   rrna_v2.provenance.txt                        accessions, dates, counts
+#   unique_rRNA_human_mouse.v3.provenance.txt     accessions, dates, counts
+#                                                 (named from FA_OUT, so a v2 and
+#                                                  a v3 build never clobber each other)
 #
 # v1 (unique_rRNA_human_mouse.fa) is left untouched so the two can be compared;
 # validate_rrna_reference.sh does exactly that.
@@ -113,7 +115,13 @@ HUMAN_45S_ACC=(NR_145819.1 NR_146144.1 NR_146151.1 NR_146117.1 NR_046235.3)
 HUMAN_45S_NAME=(RNA45SN1   RNA45SN2   RNA45SN3   RNA45SN4   RNA45SN5)
 HUMAN_45S_LEN=(13351      13315      13309      13373      13357)
 
-FA_OUT=${OUT}/unique_rRNA_human_mouse.v2.fa
+# v3 = v2 + STEP 4 (orientation). v2 is left on disk untouched so the two can be
+# compared and so the tables already built against it keep a valid reference.
+FA_OUT=${FA_OUT:-${OUT}/unique_rRNA_human_mouse.v3.fa}
+
+# ORIENT_TO_UNITS -- see the STEP 4 header. Set to `no` (with FA_OUT pointed at
+# the v2 filename) to reproduce v2 byte-for-byte.
+ORIENT_TO_UNITS=${ORIENT_TO_UNITS:-yes}
 
 mkdir -p "$B"
 cd "$B"
@@ -134,6 +142,12 @@ echo "[$(date)] === STEP 1: component A -- Ensembl 99 rRNA genes, both species =
 # Same extraction as the mouse script. -s is load-bearing: it stores minus-strand
 # genes as the sense sequence, and riboread-selection.py only counts FORWARD
 # hits when stranded=y, so a reverse-complemented entry would be invisible.
+#
+# BUT -s IS NOT SUFFICIENT, which is what STEP 4 exists to repair. It gives the
+# sense strand OF THE ANNOTATED GENE, which is transcript-sense only when Ensembl
+# put the gene on the same strand as the rRNA transcript. Where it did not
+# (ENSMUSG00000106106 in Ensembl 99), -s faithfully produces a backwards entry.
+# Do not trust this step alone to get orientation right.
 extract_ensembl_rrna() {   # $1=gtf(.gz) $2=genome $3=species_tag $4=out.fa
     local gtf=$1 genome=$2 tag=$3 out=$4
     local bed="${tag}.rRNA.bed"
@@ -217,20 +231,115 @@ fi
 echo "  47S transcript: $(awk '/^>/{next}{n+=length($0)}END{print n}' mouse_rdna_47S.fa) bp"
 
 ###############################################################################
-echo "[$(date)] === STEP 4: concatenate + bwa index ==="
+echo "[$(date)] === STEP 4: orient every Ensembl entry to the NCBI units ==="
 ###############################################################################
+# WHY THIS STEP EXISTS
+#
+# riboread-selection.py decides what is ribosomal by STRAND:
+#
+#     mapreads = [x for x in reads if (not x.is_unmapped) and (not x.is_reverse)]
+#
+# Only FORWARD hits count; a read whose hits are all reverse is kept, on the
+# reasoning that VASA is stranded so a genuine rRNA read must be sense. That is
+# correct -- but it silently assumes EVERY SEQUENCE IN THIS FASTA IS STORED IN
+# TRANSCRIPT-SENSE ORIENTATION. Orientation is the decision rule, so a single
+# backwards entry does not merely fail to help, it actively shields reads from
+# depletion.
+#
+# Component A cannot guarantee that on its own. `bedtools getfasta -s` yields the
+# sense strand OF THE ANNOTATED GENE, which equals transcript sense only when
+# Ensembl annotates the gene on the same strand as the rRNA transcript. Measured
+# on the v2 build: 914 of 915 entries were fine and exactly ONE was not --
+# ENSMUSG00000106106 (CT010467.1), annotated opposite the transcript, so its
+# entry was the 18S region stored backwards.
+#
+# What that one entry cost, measured on the 384-cell control:
+#   - it and the 47S unit capture the SAME reads (30/30 on the test set), but it
+#     scores HIGHER (mean AS 67.3 vs 64.7) because it is the exact GRCm38 locus
+#     the reads came from while BK000964.3 is a curated consensus;
+#   - bwa mem reports one primary alignment, so the backwards entry wins it and
+#     returns REVERSE;
+#   - the read is therefore spared, then written reverse-complemented by
+#     riboread-selection.py, then mapped by STAR sense to the minus-strand gene;
+#   - result: 95,823 spurious UFIs on that one locus, against 72 in the
+#     published table, and step-3 depletion understated by ~0.28 points
+#     (5.06% -> 5.34%).
+#
+# So this step fixes the CLASS, not the instance: align every Ensembl entry to
+# the NCBI full-length units and reverse-complement any that come back flag 16.
+# Entries with no homology to the units (5S, dispersed fragments) are left alone
+# -- there is nothing to orient them against, and they are not 45S-derived, so
+# they cannot be captured by the units either way.
 module purge 2>/dev/null || true
-module load BWA/0.7.17-GCC-10.3.0
+module load BWA/0.7.17-GCC-10.3.0 SAMtools/1.11-GCC-10.2.0
 
+ENS_ALL=ensembl_all.fa
+cat human.rRNA.fa mouse.rRNA.fa > "$ENS_ALL"
+
+if [ "$ORIENT_TO_UNITS" = "yes" ]; then
+    cat human_45S.fa mouse_rdna_47S.fa > units.fa
+    [ -s units.fa.bwt ] || bwa index units.fa 2>/dev/null
+    bwa mem -t 4 units.fa "$ENS_ALL" 2>/dev/null | samtools view - \
+      | awk '$2==16 {print $1}' | sort -u > antisense_names.txt
+    n_anti=$(wc -l < antisense_names.txt)
+    echo "  Ensembl entries: $(grep -c '^>' "$ENS_ALL"); stored antisense: ${n_anti}"
+    [ "$n_anti" -eq 0 ] || sed 's/^/    flipping: /' antisense_names.txt
+
+    # Reverse-complement exactly those entries; leave every other byte alone.
+    awk 'function rc(s,   i,c,o) {
+             o = ""
+             for (i = length(s); i > 0; i--) {
+                 c = substr(s, i, 1)
+                 o = o ( c=="A"?"T": c=="T"?"A": c=="C"?"G": c=="G"?"C":
+                         c=="a"?"t": c=="t"?"a": c=="c"?"g": c=="g"?"c": "N" )
+             }
+             return o
+         }
+         function flush_rec() {
+             if (name == "") return
+             print name
+             print (hit ? rc(seq) : seq)
+         }
+         NR == FNR { bad[$1] = 1; next }
+         /^>/ {
+             flush_rec()
+             name = $0
+             # the FASTA id is the header up to the first whitespace, minus ">"
+             id = substr($1, 2)
+             hit = (id in bad)
+             seq = ""
+             next
+         }
+         { seq = seq $0 }
+         END { flush_rec() }
+        ' antisense_names.txt "$ENS_ALL" > ensembl_oriented.fa
+    ENS_ALL=ensembl_oriented.fa
+
+    # Prove it: re-align and require zero reverse hits.
+    n_left=$(bwa mem -t 4 units.fa "$ENS_ALL" 2>/dev/null | samtools view - \
+             | awk '$2==16' | wc -l)
+    if [ "$n_left" -ne 0 ]; then
+        echo "  FATAL: ${n_left} entries still antisense after the flip" >&2
+        exit 1
+    fi
+    echo "  verified: 0 entries remain antisense to the units"
+else
+    n_anti=NA
+    echo "  SKIPPED (ORIENT_TO_UNITS=no) -- reproduces v2, backwards entry included"
+fi
+
+###############################################################################
+echo "[$(date)] === STEP 5: concatenate + bwa index ==="
+###############################################################################
 if [ ! -s "$FA_OUT" ]; then
-    cat human_45S.fa mouse_rdna_47S.fa human.rRNA.fa mouse.rRNA.fa > "${FA_OUT}.tmp"
+    cat human_45S.fa mouse_rdna_47S.fa "$ENS_ALL" > "${FA_OUT}.tmp"
     mv "${FA_OUT}.tmp" "$FA_OUT"
 fi
 [ -s "${FA_OUT}.bwt" ] || bwa index "$FA_OUT"
 echo "  ${FA_OUT}: $(grep -c '^>' "$FA_OUT") seqs"
 
 ###############################################################################
-echo "[$(date)] === STEP 5: QC interval table ==="
+echo "[$(date)] === STEP 6: QC interval table ==="
 ###############################################################################
 # Human subunit coordinates differ per RNA45SN copy by a few nt, so only the
 # mouse unit gets exact intervals here; for human, decompose by which of the
@@ -251,7 +360,7 @@ EOF
 echo "  wrote ${OUT}/rrna_intervals_mixed.tsv"
 
 ###############################################################################
-echo "[$(date)] === STEP 6: provenance ==="
+echo "[$(date)] === STEP 7: provenance ==="
 ###############################################################################
 {
   echo "unique_rRNA_human_mouse.v2.fa"
@@ -273,14 +382,30 @@ echo "[$(date)] === STEP 6: provenance ==="
   echo "  accession : ${MOUSE_RDNA_ACC} (${got} bp, full repeating unit)"
   echo "  extracted : ${MOUSE_RDNA_TX_START}-${MOUSE_RDNA_TX_END} (transcribed 47S; IGS excluded)"
   echo
+  echo "orientation : ORIENT_TO_UNITS=${ORIENT_TO_UNITS}"
+  if [ "$ORIENT_TO_UNITS" = "yes" ]; then
+      echo "  every Ensembl entry aligned to the NCBI 45S/47S units; any coming"
+      echo "  back flag 16 (antisense) was reverse-complemented, then re-checked"
+      echo "  to 0 remaining. This matters because riboread-selection.py decides"
+      echo "  what is ribosomal BY STRAND, so a backwards entry shields reads from"
+      echo "  depletion instead of removing them."
+      echo "  entries flipped : ${n_anti}"
+      [ "${n_anti}" = "0" ] || sed 's/^/    /' "${B}/antisense_names.txt"
+  else
+      echo "  NOT APPLIED -- this file may contain backwards entries"
+  fi
   echo "total seqs  : $(grep -c '^>' "$FA_OUT")"
   echo "total bp    : $(awk '/^>/{next}{n+=length($0)}END{print n}' "$FA_OUT")"
   echo
+  echo "supersedes  : unique_rRNA_human_mouse.v2.fa, in which ENSMUSG00000106106"
+  echo "              was stored antisense, sparing 95,823 UFIs worth of genuine"
+  echo "              18S reads on that locus (published table: 72) and"
+  echo "              understating step-3 depletion by ~0.28 points"
   echo "replaces    : unique_rRNA_human_mouse.fa (v1, Ensembl only), which called"
   echo "              0.27% of the vasaplate control's reads ribosomal"
   echo "consumed by : ribo-bwamem.sh (bwa aln + bwa mem)"
-} > "${OUT}/rrna_v2.provenance.txt"
-echo "  wrote ${OUT}/rrna_v2.provenance.txt"
+} > "${FA_OUT%.fa}.provenance.txt"
+echo "  wrote ${FA_OUT%.fa}.provenance.txt"
 
 echo "[$(date)] === DONE ==="
 echo "riboref=${FA_OUT}"

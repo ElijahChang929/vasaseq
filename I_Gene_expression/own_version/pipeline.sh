@@ -49,6 +49,31 @@ say()  { echo "[$(date '+%H:%M:%S')] $*"; }
 die()  { echo "ERROR: $*" >&2; exit 1; }
 rule() { echo "-------------------------------------------------------------"; }
 
+# --- re-run safety: delete a step's own previous outputs before it runs -------
+# Four upstream scripts end with a bare `gzip <file>`: concatenator.py (step1),
+# riboread-selection.py (step3), deal_with_{single,multi}mappers.sh (step5) and
+# countTables_2pickle_cellsSpliced.py (step6). gzip REFUSES to replace an
+# existing <file>.gz -- it prints "already exists; not overwritten" and exits 2
+# -- and none of the four checks the status. So re-running one of those stages
+# over a directory that still holds the previous run's output leaves the FRESH
+# data sitting uncompressed as <file> beside a STALE <file>.gz, and the next
+# stage reads the stale one. That is what happened on 2026-07-27: step 4 mapped
+# the previous run's reads and every file-count check still said 16/16. See
+# README.md, "Counting files is not proof".
+#
+# This is fixed from THIS side rather than in a_Mapping/, for two reasons:
+#   1. a_Mapping/ is published code, and this repo's rule is that it gets
+#      explanatory comments, not logic changes.
+#   2. Upstream is not actually wrong. It runs each stage once into a clean
+#      directory, where `gzip` and `gzip -f` are identical. The hazard is
+#      created by re-running, which is what own_version does and upstream did
+#      not -- so the fix belongs with the re-running, i.e. here.
+#
+# Removing the target .gz first means the bare gzip never meets an existing
+# file. Deliberately per cell (not a whole-directory wipe) so MAXCELLS runs and
+# partial failures only ever touch the cells actually being processed.
+rm_stale() { [ $# -gt 0 ] && rm -f "$@"; return 0; }
+
 # The list of cells we are working on, derived from step1's output.
 # Written to a manifest so every later step agrees on the order and the set.
 cell_list() {
@@ -243,6 +268,11 @@ step1_extract() {
 
     eval "$CONDA_ACTIVATE"
 
+    # step1 rebuilds every cell, so clear the whole previous set (see rm_stale).
+    # The NCORES=1 path calls concatenator.py straight into CELLDIR, where its
+    # bare gzip would otherwise refuse to overwrite these.
+    rm_stale "${CELLDIR}/${SAMPLE}"_*_cbc.fastq.gz "${CELLDIR}/${SAMPLE}"_*_cbc.fastq
+
     if [ "$NCORES" -le 1 ]; then
         # ---------- simple path: one process ----------
         say "step1: single-process demultiplex (NCORES=1)"
@@ -401,6 +431,9 @@ step2_trim() {
 
 do_ribo() {
     local cell=$1
+    # riboread-selection.py ends with a bare `gzip` -- clear its target first
+    rm_stale "${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo.fastq.gz" \
+             "${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo.fastq"
     "${VASA_SCRIPTS}/ribo-bwamem.sh" "$RRNA_FASTA" \
         "${CELLDIR}/${cell}_cbc_trimmed_homoATCG.fq.gz" \
         "${CELLDIR}/${cell}_cbc_trimmed_homoATCG" \
@@ -411,7 +444,29 @@ step3_ribo() {
     say "step3: rRNA depletion on $(cell_list | wc -l) cells"
     eval "$ML_RIBO"
     parallel_over_cells do_ribo
-    say "step3 done: $(ls ${CELLDIR}/*.nonRibo.fastq.gz 2>/dev/null | wc -l) nonRibo files"
+    # Counting output files is NOT proof the step ran -- on 2026-07-27 all 16
+    # .nonRibo.fastq.gz were stale leftovers from the previous run (gzip refused
+    # to clobber them; see riboread-selection.py) and this line still said 16.
+    # So check each output is genuinely NEWER than its input, and that no
+    # uncompressed .nonRibo.fastq was left behind, and fail loudly if not.
+    local stale=0
+    for cell in $(cell_list); do
+        local in="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.fq.gz"
+        local out="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo.fastq.gz"
+        local raw="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo.fastq"
+        if [ ! -s "$out" ]; then
+            echo "  STALE step3: $cell -- no .nonRibo.fastq.gz"; stale=$((stale+1))
+        elif [ "$out" -ot "$in" ]; then
+            echo "  STALE step3: $cell -- .nonRibo.fastq.gz is OLDER than its trimmed input"; stale=$((stale+1))
+        elif [ -e "$raw" ]; then
+            echo "  STALE step3: $cell -- uncompressed .nonRibo.fastq left beside the .gz"; stale=$((stale+1))
+        fi
+    done
+    if [ "$stale" -gt 0 ]; then
+        say "step3 FAILED: $stale/$(cell_list | wc -l) cells have stale or missing output -- do NOT run step4"
+        return 1
+    fi
+    say "step3 done: $(ls ${CELLDIR}/*.nonRibo.fastq.gz 2>/dev/null | wc -l) nonRibo files (all newer than their inputs)"
     # Per-cell rRNA table straight from the logs and .Ribo.bam files the run
     # just wrote. Automatic, like step2's -- re-run it any time with
     #   step3_report.py $CELLDIR
@@ -485,6 +540,12 @@ do_assign() {
     local cell=$1
     local bam="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam"
     [ -s "$bam" ] || { echo "  SKIP (no bam): $cell"; return; }
+    # Both deal_with_*mappers.sh end with a bare `gzip` -- clear their targets
+    # first. This one matters most: step6 GLOBS *.singlemappers_genes.bed.gz, so
+    # a stale file here is silently folded into the count tables.
+    local stem="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out"
+    rm_stale "${stem}.singlemappers_genes.bed.gz" "${stem}.singlemappers_genes.bed" \
+             "${stem}.nsorted.multimappers_genes.bed.gz" "${stem}.nsorted.multimappers_genes.bed"
     "${VASA_SCRIPTS}/deal_with_singlemappers.sh" "$bam" "$REF_BED" "$STRANDED" \
         "$P2SAMTOOLS" "$P2BEDTOOLS" > /dev/null 2>&1 || echo "  FAILED single: $cell"
     "${VASA_SCRIPTS}/deal_with_multimappers.sh"  "$bam" "$REF_BED" "$STRANDED" \
@@ -505,6 +566,8 @@ step5_assign() {
 step6_pickle() {
     say "step6: building the count pickle (this is the memory-hungry step)"
     eval "$CONDA_ACTIVATE"
+    # countTables_2pickle_cellsSpliced.py ends with a bare `gzip` on <sample>.pickle
+    rm_stale "${OUTDIR}/${SAMPLE}.pickle.gz" "${OUTDIR}/${SAMPLE}.pickle"
     # run from OUTDIR with a relative folder name: the cell id is derived from
     # the path, so an absolute path would end up inside every column name
     ( cd "$OUTDIR" && "${VASA_SCRIPTS}/countTables_2pickle_cellsSpliced.py" \

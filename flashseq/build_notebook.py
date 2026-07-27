@@ -252,8 +252,94 @@ ratio = rr["pct_rRNA_total"].sum() / rr["nfcore_biotype_rRNA_pct"].sum()
 print(f"{share:.1f}% of the rRNA signal comes from the 47S unit Ensembl does not annotate.")
 print(f"The honest number is {ratio:.1f}x the one nf-core reports.")
 print("\\nThis is a LOWER bound: exact 31-mer matching, sampled every 10 bases, no mismatches.")
-print("For a number directly comparable with VASA, re-measure with own_version/ribo-bwamem.sh")
-print("(bwa aln + bwa mem, both) so the two sides use the same method.")
+print("Section 4b aligns the same reads instead, with the same script the VASA side used.")
+"""))
+
+cells.append(md("""
+### 4b. The same measurement as VASA, not merely a similar one
+
+The k-mer screen above is a lower bound, and the VASA figure it needs to be compared against
+(21.39 % over `ZHA9292A1`) came from `bwa`. Two different methods is not a comparison. So
+`05_rrna_bwa.sh` runs **the VASA pipeline's own rRNA stage** — `a_Mapping/ribo-bwamem.sh` and
+`riboread-selection.py`, unmodified, `bwa aln` **and** `bwa mem`, against the same
+`unique_rRNA_mouse.v2.fa` — over the FLASH-seq reads. Nothing about detection is
+reimplemented; `05_rrna_bwa_report.py` even imports `step3_report.py`'s own `parse_log` so the
+arithmetic is literally shared.
+
+Three choices in that script are not obvious, and all three are checked rather than assumed:
+
+* **`stranded=n`, not `y`.** The flag decides whether a reverse-mapping read may be called
+  ribosomal. VASA is stranded, so `y` is right *there*; FLASH-seq is not, so `y` would discard
+  half the rRNA for no reason. The same BAM is re-selected with `y` and reported alongside —
+  if the library really is unstranded the two must differ ~2×.
+* **Two arms, raw and trimmed.** VASA's 21.39 % is over trimmed reads, and 16–32 % of raw
+  FLASH-seq R1 is adapter read-through and poly-G that cannot map to rRNA. Both are reported:
+  the two protocols' trimming is not the same operation, and pretending otherwise would be
+  the dishonest version of "comparable".
+* **R1 only.** VASA has one biological read per fragment. Letting FLASH-seq have two chances
+  would bias in its favour.
+"""))
+
+cells.append(code("""
+rb = pd.read_csv(RES / "rrna_bwa.tsv", sep="\\t")
+tr = rb[rb.arm == "trimmed"].set_index("library").loc[ORDER].reset_index()
+tr[["library", "input_amount", "reads_in", "ribo_pct", "ribo_pct_stranded_y",
+    "kmer_pct", "aln_only", "mem_only", "both", "fwd_pct"]]
+"""))
+
+cells.append(code("""
+# The VASA library being compared against: data/PM26037/out/logs/step3_report.txt,
+# job 50788552 -- the ALL rows of its two tables. Same scripts, same reference.
+VASA_RIBO = 21.39
+VASA_COMP = {"5ETS": 17.1, "18S": 5.9, "ITS1": 4.6, "5.8S": 1.9,
+             "ITS2": 7.6, "28S": 54.4, "3ETS": 0.9}
+SUB = list(VASA_COMP)
+
+fig, (axA, axB) = plt.subplots(1, 2, figsize=(11.2, 3.6),
+                               gridspec_kw={"width_ratios": [1.15, 1]})
+
+x = np.arange(len(tr)); w = 0.38
+axA.bar(x - w/2, tr["kmer_pct"], w, color="0.68", label="k-mer (exact match, lower bound)")
+axA.bar(x + w/2, tr["ribo_pct"], w, color="#b3402f", label="bwa aln + mem (VASA's own stage)")
+axA.axhline(VASA_RIBO, color="#1f4e79", lw=1.4, ls="--")
+axA.text(len(tr) - 0.4, VASA_RIBO, f" VASA {VASA_RIBO:.1f}%", color="#1f4e79",
+         va="center", ha="right", fontsize=8, backgroundcolor="white")
+axA.set_xticks(x); axA.set_xticklabels([l.replace("ZHA8833", "") for l in tr["library"]])
+axA.set_ylabel("% of reads"); axA.set_xlabel("library")
+axA.set_title("rRNA content, trimmed reads")
+axA.legend(fontsize=7, loc="upper right")
+
+# Composition as a share of ALL reads. Comparing composition percentages alone
+# misleads when the totals differ 3x: a subunit can be a bigger slice of a
+# much smaller cake.
+fs = [tr[f"abs_{s}"].mean() for s in SUB]
+va = [VASA_RIBO * VASA_COMP[s] / 100 for s in SUB]
+xs = np.arange(len(SUB))
+axB.bar(xs - w/2, fs, w, color="#b3402f", label="FLASH-seq (mean of 10)")
+axB.bar(xs + w/2, va, w, color="#1f4e79", label="VASA-seq ZHA9292A1")
+axB.set_xticks(xs); axB.set_xticklabels(SUB, fontsize=8)
+axB.set_ylabel("% of all reads"); axB.set_xlabel("47S subunit")
+axB.set_title("Where the difference actually sits")
+axB.legend(fontsize=7)
+
+fig.savefig(FIG / "08_rrna_bwa.pdf"); plt.show()
+
+print(f"FLASH-seq trimmed: {tr.ribo_pct.min():.2f}-{tr.ribo_pct.max():.2f}% ribosomal")
+print(f"VASA-seq:          {VASA_RIBO:.2f}% whole-library (18.0-25.1% across its 12 real cells)")
+print(f"  -> VASA carries {VASA_RIBO / tr.ribo_pct.mean():.1f}x the rRNA.")
+print(f"\\nmature 28S: {VASA_RIBO * VASA_COMP['28S'] / 100:.2f}% of VASA reads vs "
+      f"{tr.abs_28S.mean():.2f}% of FLASH-seq")
+print(f"5'ETS:      {VASA_RIBO * VASA_COMP['5ETS'] / 100:.2f}% vs {tr.abs_5ETS.mean():.2f}%")
+print("The gap is in MATURE rRNA, not pre-rRNA -- which is what a poly-A-primed protocol")
+print("versus a total-RNA protocol predicts.")
+print(f"\\nstranded=y would have reported {tr.ribo_pct_stranded_y.mean():.2f}% instead of "
+      f"{tr.ribo_pct.mean():.2f}%: the flag matters as much as the reference.")
+print(f"forward-strand share of ribosomal reads: {tr.fwd_pct.min():.1f}-{tr.fwd_pct.max():.1f}%"
+      " -- i.e. unstranded, confirming n is the right flag.")
+print(f"\\naln-only detection: {tr.aln_only.sum():,} reads of {tr.both.sum() + tr.mem_only.sum() + tr.aln_only.sum():,}."
+      "  At 151 nt bwa aln adds almost nothing --")
+print("the mirror image of VASA, where reads are short and aln-only was ~49% of detection.")
+print("Both aligners are still run: that asymmetry is the reason the stage uses two.")
 """))
 
 cells.append(md("""
@@ -450,7 +536,7 @@ and a second adapter pattern without the `CTGTCTCT` prefix for the read-through.
 
 A note on reading `overrepresented.tsv` yourself: a fragment's R1 and R2 sequences are
 separate rows, and `pct_in_library` is the larger of the two mates, so **summing that column
-double-counts every pair** (it makes A8 look 33 % human rather than 16.6 %). Sum `pct_R1`
+double-counts every pair** (it makes A8 look 36 % human rather than 18.3 %). Sum `pct_R1`
 instead — the R2-mate rows contribute ~0 to it.
 """))
 
@@ -469,14 +555,17 @@ therefore the two lowest — and they are also the two most compromised:
 | rung | libraries | usable for the comparison? |
 |---|---|---|
 | 30 pg | A9, A10 | **yes** — the cleanest low-input pair; no detectable contamination |
-| 60 pg | A7, A8 | **A7 with a caveat** (contaminant present); **A8 no** — a sixth of the library is not mouse |
+| 60 pg | A7, A8 | **A7 with a caveat** (contaminant present); **A8 no** — 18.3 % of the library is not mouse |
 | 1.5 ng and above | A1–A6 | not input-comparable to VASA; use as the ceiling reference |
 
 So the honest single-cell-equivalent comparison uses **A9 and A10**, with A1–A6 showing what
-FLASH-seq achieves when RNA is not limiting. Quote FLASH-seq's rRNA fraction from the
-k-mer/bwa measurement in section 4, never the nf-core biotype number — the VASA figures were
-computed against the 47S-containing reference, and mixing the two methods would compare
-different quantities.
+FLASH-seq achieves when RNA is not limiting.
+
+Quote FLASH-seq's rRNA fraction from **section 4b** (`rrna_bwa.tsv`) — never the nf-core
+biotype number, which measures 5S, and in preference to the k-mer lower bound. Only the bwa
+figures were produced by the same script, the same two aligners and the same reference as the
+VASA ones. On the 30 pg rung that is **A9 5.26 % / A10 4.02 %** against VASA's 21.39 %, and
+the difference sits almost entirely in mature 28S.
 
 ## 7. Caveats about the run itself
 

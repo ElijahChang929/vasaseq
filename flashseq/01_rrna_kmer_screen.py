@@ -32,18 +32,31 @@ number structurally cannot see.
 
 Being exact-match and strand-aware but mismatch-intolerant, and sampling every
 FS_KMER_STRIDE bases rather than every position, this is a LOWER BOUND. A real
-alignment finds more. If you need the number to be directly comparable with the
-VASA rRNA percentages, do not extend this script -- run the VASA pipeline's own
-code/I_Gene_expression/own_version/ribo-bwamem.sh (bwa aln + bwa mem, both, for
-the reason documented in CLAUDE.md) against the same fastqs, so both sides are
-measured by the same method.
+alignment finds more. That comparison has since been made: 05_rrna_bwa.sh runs
+the VASA pipeline's own ribo-bwamem.sh (bwa aln + bwa mem) over the same reads,
+and res/flashseq/rrna_bwa.tsv reports both side by side. Do not extend this
+script to try to close the gap -- a second half-alignment method is worth less
+than one number from the same script the VASA side used.
+
+Which reads get screened
+------------------------
+Every FS_STRIDE-th read pair across the whole file, NOT the first N. Head
+sampling is measurably biased -- see the FS_STRIDE comment in config.sh, where
+the adapter rate reads 58.5 / 57.7 / 56.4% off the first 20k / 400k / 2M reads
+of ZHA8833A1 against 55.1% for the whole library, because a fastq is ordered by
+flowcell position. Stride sampling reproduces the whole-library figure.
+
+The stride is deterministic, so this screens EXACTLY the reads 05_rrna_bwa.sh
+aligns, as long as both run with the same FS_STRIDE. That is what makes the
+k-mer-vs-bwa gap a difference of method rather than of input, and it is why
+neither script has to depend on the other to get it.
 
 Output
 ------
     res/flashseq/rrna_kmer.tsv
 
-Runtime: ~30 s per library at 400k reads. Fine on a login node, but the sbatch
-wrapper is 01_rrna_kmer_screen.sbatch if you raise FS_SUBSAMPLE.
+Runtime: ~4 min per library -- the whole file is decompressed, since reaching
+the tail is the entire point. Use the sbatch wrapper, 01_rrna_kmer_screen.sbatch.
 """
 from __future__ import annotations
 
@@ -66,9 +79,12 @@ RRNA_FA = Path(os.environ.get(
     "FS_RRNA_FA",
     "/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116/unique_rRNA_mouse.v2.fa",
 ))
-N_READS = int(os.environ.get("FS_SUBSAMPLE", "400000"))
 K = int(os.environ.get("FS_K", "31"))
+# Two different strides, and confusing them would be easy:
+#   STRIDE      -- bases between sampled k-mers WITHIN a read
+#   READ_STRIDE -- reads between sampled reads WITHIN a file
 STRIDE = int(os.environ.get("FS_KMER_STRIDE", "10"))
+READ_STRIDE = int(os.environ.get("FS_STRIDE", "64"))
 
 # The record name build_rrna_reference.sh gives the NCBI 47S unit. If this stops
 # matching, the 47S/Ensembl split silently collapses into one bucket, so fail
@@ -156,10 +172,17 @@ def main() -> None:
 
     rows = []
     for lib, r1 in libraries():
-        n47 = nens = total = 0
+        n47 = nens = total = seen = 0
         with gzip.open(r1, "rt") as fh:
             for i, line in enumerate(fh):
                 if i % 4 != 1:
+                    continue
+                seen += 1
+                # every READ_STRIDE-th read, across the whole file. Deliberately
+                # no `break`: stopping early is exactly the head-of-file bias
+                # this replaced, and the tail of the flowcell is where the
+                # sample stops being representative.
+                if (seen - 1) % READ_STRIDE:
                     continue
                 total += 1
                 read = line.strip()
@@ -167,10 +190,10 @@ def main() -> None:
                     n47 += 1
                 elif hits(read, kens):
                     nens += 1
-                if total >= N_READS:
-                    break
         rows.append({
             "library": lib,
+            "reads_in_file": seen,
+            "read_stride": READ_STRIDE,
             "reads_screened": total,
             "pct_rRNA_47S": 100 * n47 / total,
             "pct_rRNA_ensembl_only": 100 * nens / total,

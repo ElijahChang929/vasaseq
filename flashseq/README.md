@@ -66,21 +66,72 @@ awk -F'\t' '$3=="gene" && $9~/gene_biotype "rRNA"/' \
 
 This is the same defect found and fixed on the VASA side (see `CLAUDE.md`, "Reference
 provenance"). Re-measured by exact 31-mer containment against `unique_rRNA_mouse.v2.fa`,
-which carries the NCBI 47S unit `BK000964.3:1-13403`, on 400 k R1 reads per library:
+which carries the NCBI 47S unit `BK000964.3:1-13403`, on every 64th R1 read of each library
+(362 k–605 k reads):
 
 | | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | A9 | A10 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | nf-core biotype | 0.81 | 0.70 | 0.85 | 0.83 | 0.85 | 0.73 | 0.73 | 1.40 | 1.07 | 0.73 |
-| **47S unit** | **6.26** | **5.03** | **4.49** | **4.57** | **4.04** | **3.60** | **3.25** | **4.66** | **4.62** | **3.77** |
-| Ensembl records only | 0.17 | 0.21 | 0.24 | 0.20 | 0.20 | 0.24 | 0.25 | 0.31 | 0.11 | 0.09 |
+| **47S unit** | **6.17** | **4.90** | **4.33** | **4.43** | **3.97** | **3.49** | **3.16** | **4.58** | **4.58** | **3.79** |
+| Ensembl records only | 0.15 | 0.19 | 0.24 | 0.19 | 0.21 | 0.24 | 0.23 | 0.30 | 0.12 | 0.08 |
 
-**95.6 %** of the rRNA signal comes from the 47S unit Ensembl does not annotate. These are
+**95.7 %** of the rRNA signal comes from the 47S unit Ensembl does not annotate. These are
 exact matches sampled every 10 bases with no mismatch tolerance, so they are a **lower
-bound** — see "Open" below for making them directly comparable to the VASA numbers.
+bound**; `05_rrna_bwa.sh` closes that gap by aligning instead — see below.
+
+### FLASH-seq carries 4.3× less rRNA than VASA, and the gap is in mature 28S
+
+The number above is a lower bound from one method, and the VASA figure it needs to be
+compared with came from another, so `05_rrna_bwa.sh` runs **the VASA pipeline's own rRNA
+stage** over the FLASH-seq reads: `a_Mapping/ribo-bwamem.sh` and `riboread-selection.py`
+unmodified, `bwa aln` **and** `bwa mem`, the same `unique_rRNA_mouse.v2.fa`.
+`05_rrna_bwa_report.py` even imports `step3_report.py`'s own `parse_log`, so the arithmetic
+is shared rather than re-derived. Trimmed arm, every 64th read:
+
+| | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | A9 | A10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| input | 30ng | 30ng | 3ng | 3ng | 1.5ng | 1.5ng | 60pg | 60pg | 30pg | 30pg |
+| **bwa rRNA %** | **6.44** | **5.23** | **4.70** | **4.75** | **4.31** | **3.84** | **3.50** | **5.02** | **5.26** | **4.02** |
+| k-mer lower bound | 6.33 | 5.09 | 4.57 | 4.63 | 4.18 | 3.73 | 3.40 | 4.88 | 4.69 | 3.87 |
+| `stranded=y` would say | 3.23 | 2.66 | 2.36 | 2.37 | 2.13 | 1.95 | 1.73 | 2.50 | 2.62 | 1.98 |
+
+**FLASH-seq 3.50–6.44 % against VASA-seq's 21.39 %** (`ZHA9292A1`, whole library;
+18.0–25.1 % across its 12 real cells) — **4.3×**, measured by one script against one
+reference. Five things worth keeping from it:
+
+1. **The gap is in mature rRNA, not pre-rRNA.** As a share of *all* reads — which is the
+   comparison that means anything, since a subunit can be a larger slice of a much smaller
+   cake — **28S is 11.64 % of VASA reads and 1.43 % of FLASH-seq (8.1×)**, while 5'ETS is
+   3.66 % vs 1.86 % (only 2.0×). That is what a poly-A-primed protocol against a total-RNA
+   protocol predicts: mature rRNA is what oligo-dT priming misses.
+2. **`stranded=n` was the right flag, and the cost of getting it wrong is a factor of two.**
+   Re-selecting the same BAM with `y` — VASA's setting — halves every figure. The forward
+   strand carries **49.1–50.5 %** of ribosomal reads in all ten libraries, which is the
+   measurement that says the library is unstranded rather than the assumption.
+3. **Trimming is irrelevant here: +0.01 points on average.** The worry that ~30 % adapter
+   read-through was deflating the denominator was reasonable and turns out to be worth
+   nothing, because those reads cannot map to rRNA either way.
+4. **The k-mer screen was already within 3.5 % of the truth** (+0.16 points). Both screened
+   the *same* reads — deterministic stride, identical counts, checked by the report — so
+   that is a pure difference of method, and it is smaller than expected for an exact-match
+   lower bound.
+5. **`bwa aln` contributes essentially nothing at 151 nt** — 0 aln-only reads on the raw arm,
+   42–92 on the trimmed. That is the exact mirror of VASA, where reads are short and aln-only
+   was ~49 % of detection on cell 001. Both aligners are still run; the asymmetry *is* the
+   reason the stage uses two.
+
+Two cautions before quoting this. Composition varies more between FLASH-seq libraries than
+within VASA (28S 24.3–44.9 % of ribosomal reads, against VASA's 51.7–55.5 % per cell), and
+the two replicates of a rung differ more than the rungs do — A9 5.26 % vs A10 4.02 %, both
+30 pg. And the 5'ETS share is high (32–47 %), which on the VASA side once turned out to be a
+poly-T artefact; it is not one here — the report's `ets5pk` column shows the 5'ETS hits
+spread across the whole 4 kb, busiest 200 nt window 12.3–16.0 %, against 88.9 % in the case
+that *was* an artefact.
 
 ### The 60 pg pair is contaminated with human CALB1 — and it is a well effect
 
-FastQC flagged one sequence as 15.9 % of A8 and could only say "No Hit". Tracked down:
+FastQC flagged one sequence as 15.9 % of A8 and could only say "No Hit". Tracked down, and
+**A8 is 18.3 % human in total** once every fragment is counted across the whole file:
 
 - R1 `TCTAGCCTGTGAGGGAACACGTTGAAGAAAAACTAAGCAGCAGGTAATGG` (5,060,926 reads) /
   R2 `TCCTCAGTTTCTATGAAGCCACTGTGGTCAGTATCATATTTTCTCCATGT` (5,029,903 reads); a second
@@ -101,8 +152,9 @@ Counted in every library rather than trusting FastQC's ~0.1 % reporting floor:
 |---|---|---|---|---|---|---|---|---|---|---|
 | input | 30ng | 30ng | 3ng | 3ng | 1.5ng | 1.5ng | **60pg** | **60pg** | 30pg | 30pg |
 | well | A:1 | B:1 | C:1 | D:1 | E:1 | F:1 | **G:1** | **H:1** | A:2 | B:2 |
-| CALB1 unspliced % | 0.43 | 0.29 | 0.30 | 0.06 | 0.56 | 0.22 | **3.25** | **14.67** | 0.04 | 0.00 |
-| CALB1 spliced % | 0.01 | 0.01 | 0.01 | 0.00 | 0.00 | 0.01 | **0.07** | **1.84** | 0.00 | 0.00 |
+| CALB1 unspliced % | 0.48 | 0.35 | 0.32 | 0.06 | 0.64 | 0.24 | **3.54** | **15.90** | 0.05 | 0.00 |
+| CALB1 spliced % | 0.01 | 0.01 | 0.01 | 0.00 | 0.00 | 0.01 | **0.06** | **2.30** | 0.00 | 0.00 |
+| **all human, sum `pct_R1`** | 0.49 | 0.36 | 0.34 | 0.06 | 0.64 | 0.25 | **3.62** | **18.32** | 0.05 | 0.00 |
 
 The 30 pg pair is *cleaner* than the 30 ng pair, so this is **not** "low input amplifies
 background". A7 and A8 are wells **G:1 and H:1 — adjacent**; A9/A10 are A:2 and B:2. This is
@@ -123,10 +175,10 @@ the reads carry its reverse complement), `probe_adapter_P7_readthrough` in
 
 | | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | A9 | A10 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| R1 % | 23.0 | 19.5 | 28.0 | 32.7 | 32.5 | 31.8 | 28.3 | 26.4 | **35.6** | **35.8** |
+| R1 % | 19.6 | 15.7 | 24.0 | 28.5 | 28.1 | 28.3 | 24.3 | 23.2 | **31.9** | **32.1** |
 | R2 % | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-Strictly R1, and it rises as input falls (19–23 % at 30 ng, ~36 % at 30 pg) — shorter inserts
+Strictly R1, and it rises as input falls (16–20 % at 30 ng, ~32 % at 30 pg) — shorter inserts
 from less material.
 
 **A subset survives trimming.** Comparing FastQC's overrepresented tables before and after
@@ -142,23 +194,92 @@ The reason the adapter ones survive is checkable, not guesswork: every one of th
 sequences begins **mid**-mosaic-end (`CTTATACACATCT…`) and so does **not contain**
 `CTGTCTCTTATA`, the pattern cutadapt anchors on. Reads that consist entirely of read-through
 therefore pass through untrimmed, while reads with a partial 3′ adapter (the 63 %) are
-trimmed normally.
+trimmed normally. They are, however, a much smaller population than FastQC's table implies —
+1.14 % of A10's R1, measured below.
 
 **Poly-G is not removed at all.** MultiQC shows the exact 50×G read at 1.0–2.8 % of R2;
-counting reads containing *any* 30 nt G-run on 400 k reads gives R1: A1 4.0, A2 3.7, A3 5.8,
-A4 4.5, A5 6.2, A6 5.9, A7 5.2, A8 4.1, A9 6.5, **A10 8.2 %**. After trimming it is still
-2.71 % of A10 R2 (from 2.79 % raw). This is the NovaSeq X two-colour dark-cycle artefact —
-no signal is called G — and TrimGalore's adapter pass has no concept of it.
+counting reads containing *any* 30 nt G-run gives R1: A1 3.3, A2 3.0, A3 4.8, A4 3.8, A5 5.3,
+A6 5.0, A7 4.2, A8 3.5, A9 5.7, **A10 7.1 %**. After trimming it is still 2.71 % of A10 R2
+(from 2.79 % raw). This is the NovaSeq X two-colour dark-cycle artefact — no signal is called
+G — and TrimGalore's adapter pass has no concept of it.
 
 Both therefore reach STAR and contribute to its "unmapped, too short" fraction.
-`--nextseq-trim 20` / `--2colour 20` addresses the poly-G; the untrimmed read-through needs a
-second adapter pattern without the `CTGTCTCT` prefix. Quantify on one library before
-deciding whether a re-run is justified.
+
+#### …and the two artefacts turn out to be the same reads
+
+Quantified by `06_trim_options.sh` on **A10** — the worst poly-G library, and a 30 pg rung —
+over 90,404 read pairs. Three schemes, identical except for the flags under test:
+
+| scheme | pairs kept | bases written | R1 still carrying mosaic end at its 3′ |
+|---|---|---|---|
+| current | 90,130 | 22,532,184 | 0.10 % |
+| `+ --nextseq-trim=20` | 87,689 | 21,755,261 | 0.11 % |
+| `+ also -a CTTATACACATCT` | 87,680 | 22,134,623 | **37.18 %** |
+
+Three results, and two of them overturn what this section used to recommend:
+
+1. **`--nextseq-trim=20` removes 2,441 pairs (2.7 %)** that currently reach STAR — matching
+   the 2.80 % of R2 reads that are ≥ 80 % G almost exactly, so it takes the poly-G population
+   and little else.
+2. **The read-through and the poly-G are one artefact.** Only **1.14 %** of R1 actually begins
+   mid-mosaic-end (1,032 reads — far less than FastQC's table implies, because FastQC reads
+   only the first 50 bp), and **1,019 of those 1,032 have a poly-G R2 mate**. They are a
+   no-insert pair seen from its two ends. `--nextseq-trim=20` already removes them; the extra
+   adapter adds 9 pairs.
+3. **The second adapter pattern is actively harmful — that proposal is withdrawn.**
+   `CTTATACACATCT` is 13 nt against `CTGTCTCTTATA`'s 12, so on the ordinary read-through that
+   the current settings trim correctly it wins cutadapt's best-match contest and cuts 7 nt
+   *later*, leaving mosaic-end sequence on 37 % of R1 reads instead of 0.1 %. It is also why
+   that row writes *more* bases than the row above it, which otherwise reads like a recovery.
+
+So the fix is **`--nextseq-trim 20` / `--2colour 20` alone**. What it buys is a cleaner
+denominator, not recovered data — those pairs have no insert to recover. Whether that
+justifies a re-run is a judgement call, and putting a number on the mapping-rate gain needs
+the STAR index this run did not save (see the caveats below).
 
 **Reading `overrepresented.tsv`:** a fragment's R1 and R2 sequences are separate rows, and
 `pct_in_library` is the larger of the two mates — so **summing that column double-counts
-every pair** (it makes A8 look 33 % human instead of 16.6 %). Sum `pct_R1` instead; the
+every pair** (it makes A8 look 36 % human instead of 18.3 %). Sum `pct_R1` instead; the
 R2-mate rows contribute ~0 to it.
+
+### The first N reads of a fastq are not a sample of it
+
+Found 2026-07-27, while validating that `05_rrna_bwa.sh` reproduced TrimGalore. It does —
+but the check failed anyway, and the reason was the sampling, not the trimming. One identical
+cutadapt call on `ZHA8833A1`, reading the adapter-containing rate off the head of the file:
+
+| first 20 k | first 400 k | first 2 M | every 64th | whole library |
+|---|---|---|---|---|
+| 58.5 % | 57.7 % | 56.4 % | **55.2 %** | **55.1 %** |
+
+A fastq is ordered by flowcell position, and adapter content — hence insert length, hence
+anything downstream of it — drifts along it. Stride sampling also reproduces the whole-library
+quality-trimmed rate (0.7 %) and bases-written rate (89.2 %); head sampling reproduces
+neither. The whole-library column is the saved TrimGalore report, so it is an independent
+witness rather than another run of our own code.
+
+`01_rrna_kmer_screen.py` and `02_contaminant_check.py` both took the first 400 k reads and
+have been switched to `FS_STRIDE`. On the rRNA numbers the correction is small and one-signed
+— **−2.1 % relative on average**, 9 of 10 libraries down:
+
+| | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | A9 | A10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| head 400 k | 6.43 | 5.24 | 4.74 | 4.77 | 4.25 | 3.84 | 3.50 | 4.97 | 4.73 | 3.87 |
+| every 64th | 6.33 | 5.09 | 4.57 | 4.63 | 4.18 | 3.73 | 3.40 | 4.88 | 4.69 | 3.87 |
+
+Nothing in the conclusions above moved — the CALB1 finding is a 25× difference between
+libraries and could not care about 2 % — but rates are exactly the quantity this distorts, so
+the tables now carry the stride numbers.
+
+The stride is deterministic, so scripts sharing `FS_STRIDE` screen **the same reads** without
+depending on one another. That is what makes the k-mer-vs-bwa gap below a difference of
+method alone. The cost is one full decompress per file (~57 s), which is why `01` gained an
+sbatch wrapper.
+
+**Not fixable the same way: FastQC.** Its overrepresented-sequence table comes from a
+head-of-file sample by design, and it only inspects the first 50 bp. That is why
+`04_trim_effect.py` uses FastQC on *both* sides of trimming and reports only the difference —
+the absolute levels there are not comparable with `02`'s whole-file rates.
 
 ### Otherwise the run is mechanically sound
 
@@ -186,12 +307,14 @@ confirmed to have applied).
 | rung | libraries | usable? |
 |---|---|---|
 | 30 pg | A9, A10 | **yes** — the cleanest low-input pair, no detectable contamination |
-| 60 pg | A7, A8 | A7 with a caveat; **A8 no** — a sixth of the library is not mouse |
+| 60 pg | A7, A8 | A7 with a caveat; **A8 no** — 18.3 % of the library is not mouse |
 | ≥1.5 ng | A1–A6 | not input-comparable to VASA; use as the ceiling reference |
 
-Quote FLASH-seq's rRNA fraction from the k-mer (or bwa) measurement, never the nf-core
-biotype number — the VASA figures were computed against the 47S-containing reference, and
-mixing methods compares different quantities.
+**Quote FLASH-seq's rRNA fraction from `rrna_bwa.tsv`** — never the nf-core biotype number,
+which measures 5S, and in preference to the k-mer lower bound. Only the bwa figures were
+produced by the same script, the same two aligners and the same reference as the VASA ones;
+everything else compares different quantities. On the 30 pg rung that is **A9 5.26 % / A10
+4.02 %** against VASA's 21.39 %.
 
 ## Running it
 
@@ -200,19 +323,31 @@ cd /nemo/lab/turnerj/working/guangxin/vasaseq
 source code/flashseq/config.sh
 fs_check_python                              # confirms the interpreter
 
+# on the login node -- these read nf-core's own output, not the FASTQs
 fs_python code/flashseq/00_collect_qc.py     # seconds  -> qc_summary.tsv
 fs_python code/flashseq/03_gene_detection.py # <1 min   -> gene_detection.tsv,
                                              #             replicate_concordance.tsv
-fs_python code/flashseq/01_rrna_kmer_screen.py   # ~5 min -> rrna_kmer.tsv
-sbatch    code/flashseq/02_contaminant_check.sbatch  # ~18 min -> overrepresented.tsv
-fs_python code/flashseq/04_trim_effect.py    # seconds -> trim_effect.tsv
+fs_python code/flashseq/04_trim_effect.py    # seconds  -> trim_effect.tsv
+
+# these three stream the FASTQs end to end -- submit them, do not run them here
+sbatch code/flashseq/01_rrna_kmer_screen.sbatch    # -> rrna_kmer.tsv
+sbatch code/flashseq/02_contaminant_check.sbatch   # -> overrepresented.tsv
+sbatch code/flashseq/05_rrna_bwa.sbatch            # -> res/flashseq/rrna_bwa/
+fs_python code/flashseq/05_rrna_bwa_report.py      # -> rrna_bwa.tsv
 
 fs_python -m nbconvert --execute --to html \
     --output-dir res/flashseq code/flashseq/flashseq_qc.ipynb
 ```
 
-`config.sh` is the only file meant to be edited — every path and the subsample size live
-there. All four scripts are re-runnable and overwrite their own outputs.
+`config.sh` is the only file meant to be edited — every path, `FS_STRIDE`, and the tool
+locations live there. Every script is re-runnable and overwrites its own outputs; `05` clears
+each library's directory before rebuilding it, because `riboread-selection.py` ends in a bare
+`gzip` that refuses to clobber and would otherwise leave a rerun looking successful while
+writing nothing.
+
+**`05_rrna_bwa_report.py` refuses to build a partial table.** If any library's
+`ribo-map.log` is missing it exits rather than tabulating what happens to be there — partial
+output in that directory is indistinguishable from complete output otherwise.
 
 **The notebook is generated, not hand-edited.** `flashseq_qc.ipynb` is committed without
 outputs (a committed `.ipynb` full of base64 images diffs badly); its source of truth is
@@ -232,6 +367,12 @@ breaks `jupyter_client` on import. `config.sh` records the three environments tr
 this one and why each was rejected — in particular `envs/vasa` was deliberately left alone,
 since it is the live VASA pipeline's environment.
 
+**`05_rrna_bwa.sh` is the one exception, and it only borrows.** It runs `bwa`/`samtools` from
+the EasyBuild modules and `riboread-selection.py` under `envs/vasa`, because that script needs
+pysam and Anaconda base has none — which is exactly how the VASA side runs the same stage.
+Nothing is installed into `envs/vasa`; it is activated and read. Its report script,
+`05_rrna_bwa_report.py`, is back on `fs_python` like everything else here.
+
 ## Where this stands (end of 2026-07-27)
 
 **Everything in this directory has been run end to end and every number above was produced
@@ -242,12 +383,17 @@ outstanding. Outputs in `res/flashseq/`:
 |---|---|---|
 | `qc_summary.tsv` | `00_collect_qc.py` | 10 rows × 56 cols |
 | `gene_detection.tsv`, `replicate_concordance.tsv` | `03_gene_detection.py` | |
-| `rrna_kmer.tsv` | `01_rrna_kmer_screen.py` | 400 k R1 reads/library |
-| `overrepresented.tsv` | `02_contaminant_check.py` | job `50837920`, ~18 min |
+| `rrna_kmer.tsv` | `01_rrna_kmer_screen.py` | job `50855262`, stride 64 |
+| `overrepresented.tsv` | `02_contaminant_check.py` | job `50855331`, stride 64 |
 | `trim_effect.tsv` | `04_trim_effect.py` | seconds |
-| `flashseq_qc.html` + `figures/*.pdf` | the notebook | 7 figures, 0 cell errors |
+| `rrna_bwa.tsv` + `rrna_bwa/` | `05_rrna_bwa.sh` → `05_rrna_bwa_report.py` | job `50855065`, 46 min, MaxRSS 778 MB |
+| `trim_options/` | `06_trim_options.sh` | ~3 min, login node |
+| `flashseq_qc.html` + `figures/*.pdf` | the notebook | 8 figures, 0 cell errors |
 
-Re-running from scratch is four commands plus one `sbatch` — see "Running it" above.
+**`01` and `02` were re-run on 2026-07-27 after the head-of-file sampling defect was found**
+(see the finding above); every number in this README is from those re-runs. `05` and `06` are
+new in the same pass. Re-running from scratch is three login-node commands plus three
+`sbatch` — see "Running it" above.
 
 ### Three unit/method traps that were found the hard way
 
@@ -263,36 +409,43 @@ Recorded because each produced a plausible-looking wrong number first:
    libraries** when the true figure is 19–36 %. `02_contaminant_check.py` now matches both
    orientations everywhere.
 
-And one comparison trap: **FastQC only inspects the first 50 bp of a read**, so its
-percentages are not comparable with a whole-read search. Comparing the two is what briefly
-made trimming look effective on adapter when it is not. Compare like with like —
-`04_trim_effect.py` uses FastQC on both sides.
+And two comparison traps:
+
+**FastQC only inspects the first 50 bp of a read**, and draws its overrepresented-sequence
+table from a head-of-file sample, so its percentages are not comparable with a whole-read,
+whole-file search. Comparing the two is what briefly made trimming look effective on adapter
+when it is not. Compare like with like — `04_trim_effect.py` uses FastQC on both sides.
+
+**A longer adapter pattern is not a stricter one.** cutadapt picks the best-scoring adapter,
+so adding a 13 nt pattern alongside a 12 nt one lets the longer pattern win on reads the
+shorter one was trimming correctly — and cut 7 nt later. Adding what looked like a strictly
+extra safeguard left mosaic-end sequence on 37 % of R1 instead of 0.1 % (`06_trim_options.sh`).
+Measure a trimming change on reads it was *not* aimed at, not only on the ones it was.
 
 ## Next steps
 
 Roughly in priority order.
 
-1. **Re-measure rRNA with `bwa` so FLASH-seq and VASA are directly comparable.** Do not
-   extend `01_rrna_kmer_screen.py` — run `code/I_Gene_expression/own_version/ribo-bwamem.sh`
-   (bwa `aln` **and** `mem`, both, for the reason in `CLAUDE.md`) against these FASTQs
-   against `unique_rRNA_mouse.v2.fa`. The k-mer figures are exact-match lower bounds and will
-   move up. This is the one blocking item for a like-for-like FLASH-seq vs VASA rRNA claim.
-2. **Decide A7/A8's fate.** A8 is not a usable 60 pg data point (16.6 % human CALB1). A7 is
-   at 3.3 %; the reads are exactly identifiable, so filtering them is straightforward if you
+1. **Start the actual FLASH-seq ↔ VASA comparison** once the VASA count tables are final
+   (that is the other agent's `own_version` steps 2–7; step 6 was still running at
+   2026-07-27 18:30, job `50836432`, expecting ~3 h from 16:01). The FLASH-seq side is ready:
+   per library QC keyed by input amount, with A9/A10 (30 pg) as the single-cell-equivalent
+   comparison point and A1–A6 as the not-RNA-limited ceiling. The rRNA leg of that comparison
+   is already done and like-for-like — see the bwa section above.
+2. **Decide A7/A8's fate.** A8 is not a usable 60 pg data point (18.3 % human CALB1). A7 is
+   at 3.6 %; the reads are exactly identifiable, so filtering them is straightforward if you
    want to keep it. This is a judgement call, not a technical one.
-3. **Start the actual FLASH-seq ↔ VASA comparison** once the VASA count tables are final
-   (that is the other agent's `own_version` steps 2–7). The FLASH-seq side is ready: per
-   library QC keyed by input amount, with A9/A10 (30 pg) as the single-cell-equivalent
-   comparison point and A1–A6 as the not-RNA-limited ceiling.
-4. **Quantify what better trimming would recover**, on one library, before deciding whether a
-   re-run is justified: `--nextseq-trim 20` / `--2colour 20` for poly-G, plus an adapter
-   pattern without the `CTGTCTCT` prefix for the read-through that currently survives.
-   Both artefacts feed STAR's "unmapped, too short" (23–24 % in A8/A9).
-5. **Fill the 1.5 ng → 60 pg gap** (~500 pg, ~150 pg) if locating the sensitivity floor is
+3. **Decide whether a re-run with `--2colour 20` is worth it.** `06_trim_options.sh` has
+   quantified the gain: 2.7 % fewer junk read pairs reaching STAR on A10, and nothing
+   recovered, because those pairs have no insert. Putting a number on the mapping-rate change
+   needs the STAR index this run did not save (22 min to rebuild). Do **not** add the second
+   adapter pattern — measured harmful, see above.
+4. **Fill the 1.5 ng → 60 pg gap** (~500 pg, ~150 pg) if locating the sensitivity floor is
    the actual experimental question — the current design brackets it but does not sample it.
-6. **Consider re-running nf-core with `--save_reference` fixed**, or at least regenerate the
-   truncated `filtered.gtf`, if this run's saved reference will ever be reused. Not needed
-   for anything above.
+5. **Consider re-running nf-core with `--save_reference` fixed**, or at least regenerate the
+   truncated `filtered.gtf`, if this run's saved reference will ever be reused. Rebuilding
+   the STAR index is also the prerequisite for putting a number on item 3.
 
-Not started, deliberately: the comparison itself (item 3), and anything that would modify
-`data/flashseq/` — this pass only reads that directory.
+Not started, deliberately: the comparison itself (item 1), which is blocked on the VASA count
+tables, and anything that would modify `data/flashseq/` — every pass so far only reads that
+directory.

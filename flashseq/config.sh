@@ -37,6 +37,31 @@ export FS_MOUSE_GTF="${FS_MOUSE_GTF:-$FS_REF_GENOMES/mus_musculus/GRCm39/annotat
 export FS_HUMAN_FA="${FS_HUMAN_FA:-$VASA_REFS/mixed/build/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz}"
 export FS_HUMAN_GTF="${FS_HUMAN_GTF:-$VASA_REFS/mixed/build/Homo_sapiens.GRCh38.99.gtf.gz}"
 export FS_ERCC_FA="${FS_ERCC_FA:-/nemo/lab/turnerj/working/guangxin/reference/ercc/ERCC92.fa}"
+export FS_RRNA_INTERVALS="${FS_RRNA_INTERVALS:-$(dirname "$FS_RRNA_FA")/rrna_intervals.tsv}"
+
+# --- the VASA side, borrowed by 05_rrna_bwa.sh ------------------------------
+# 05 does NOT reimplement rRNA detection. It calls the same two scripts the VASA
+# run called, with the same reference, so the two percentages are the same
+# measurement rather than two methods that happen to be about rRNA. Anything
+# reimplemented here would silently become a second method.
+export FS_VASA_SCRIPTS="${FS_VASA_SCRIPTS:-$FS_ROOT/code/I_Gene_expression/a_Mapping}"
+export FS_VASA_OWN="${FS_VASA_OWN:-$FS_ROOT/code/I_Gene_expression/own_version}"
+
+# --- cluster tools, for the one stage that needs binaries -------------------
+# Same module builds and same absolute-path convention as own_version/config.sh.
+# Trim_Galore is deliberately NOT loaded: it is a foss-2018b build and dragging
+# its libstdc++ in alongside BWA/SAMtools breaks them (see repo CLAUDE.md). 05
+# therefore reproduces TrimGalore's cutadapt call directly -- see its header.
+export FS_EBROOT="${FS_EBROOT:-/camp/apps/eb/software}"
+export FS_P2BWA="${FS_P2BWA:-$FS_EBROOT/BWA/0.7.17-GCC-10.3.0/bin}"
+export FS_P2SAMTOOLS="${FS_P2SAMTOOLS:-$FS_EBROOT/SAMtools/1.11-GCC-10.2.0/bin}"
+
+# riboread-selection.py needs pysam, which the Anaconda base below does NOT
+# have. That one script therefore runs under the VASA pipeline's env, exactly as
+# it does on the VASA side. Nothing is installed into it here -- 05 only reads.
+export FS_VASA_ENV="${FS_VASA_ENV:-/nemo/lab/turnerj/working/guangxin/envs/vasa}"
+export FS_CUTADAPT="${FS_CUTADAPT:-$FS_VASA_ENV/bin/cutadapt}"
+export FS_ML_RIBO="${FS_ML_RIBO:-source /usr/share/lmod/lmod/init/bash; export MODULEPATH=$FS_EBROOT/../modules/all; module load BWA/0.7.17-GCC-10.3.0 SAMtools/1.11-GCC-10.2.0; source $FS_EBROOT/Anaconda3/2024.10-1/etc/profile.d/conda.sh; conda activate $FS_VASA_ENV}"
 
 # --- python -----------------------------------------------------------------
 # The cluster's Anaconda3 base interpreter, used directly. Nothing is built or
@@ -91,5 +116,25 @@ PYEOF
 # few minutes per library and puts the sampling error on a 4% rate at ~0.03%,
 # which is far below the effects being measured (rRNA 3.3-6.3%, CALB1 0-15%).
 export FS_SUBSAMPLE="${FS_SUBSAMPLE:-400000}"
+
+# TAKING THE FIRST N READS IS BIASED -- USE FS_STRIDE INSTEAD.
+# Measured on ZHA8833A1 (2026-07-27) with the identical cutadapt call, reading
+# the adapter-containing rate off the head of the file:
+#
+#     first 20k   58.5%      first 400k  57.7%      first 2M  56.4%
+#     every 64th  55.2%      whole library (saved TrimGalore report)  55.1%
+#
+# The head of a fastq is one end of the flowcell, and adapter content -- hence
+# insert length, hence anything that depends on it -- drifts along it. Head
+# sampling overstated the rate by 2.6 points at 400k; a uniform every-Nth-read
+# sample reproduces the whole-library figure, and reproduces its quality-trimmed
+# (0.7%) and bases-written (89.2%) rates too. So sample with a stride.
+#
+# 64 gives ~456k reads from a ~29M-read library: binomial s.e. 0.03% on a 5%
+# rate, against a 4x effect. Denser costs almost nothing in bwa (5 s per 456k
+# reads) but the decompression pass -- 57 s per file, the real cost -- is paid
+# whatever the stride.
+export FS_STRIDE="${FS_STRIDE:-64}"
+export FS_RRNA_BWA_DIR="${FS_RRNA_BWA_DIR:-$FS_OUT/rrna_bwa}"
 
 mkdir -p "$FS_OUT"

@@ -16,6 +16,17 @@ similar in the raw FASTQ and behave completely differently:
 Comparing the two FastQC passes nf-core already ran is enough to tell them
 apart, and needs no FASTQ streaming -- this runs in seconds.
 
+Two limits inherited from FastQC, neither fixable here
+------------------------------------------------------
+FastQC inspects only the first 50 bp of each read, and (its own documented
+behaviour) builds the overrepresented-sequence table from a sample taken at the
+START of the file rather than the whole of it. So these percentages are not on
+the same footing as 02_contaminant_check.py's, which counts every
+FS_STRIDE-th read across the entire file and is the number to quote for a rate.
+What FastQC is good for is exactly what it is used for here: the SAME
+measurement on both sides of trimming, so the before/after difference is
+meaningful even where the absolute level is not.
+
 The comparison is per read FILE, not per library, because poly-G is strongly
 mate-specific here (it is much heavier on R2) and averaging the mates would
 hide that.

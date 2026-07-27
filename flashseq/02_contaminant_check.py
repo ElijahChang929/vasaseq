@@ -31,9 +31,17 @@ Output
         one row per (sequence, library), with source / gene / locus and the
         measured percentage in that library
 
-Runtime: dominated by stage 1, ~4 min per genome pass (mouse ~2.7 GB, human
-~3.1 GB gzipped), plus ~30 s per library for stage 2. Submit it, do not run it
-on a login node:
+Which reads stage 2 counts
+--------------------------
+Every FS_STRIDE-th read of every file, across the whole file -- not the first N.
+Head sampling is measurably biased (see config.sh), and while that bias never
+came close to threatening the CALB1 result, which is a 25x difference between
+libraries, the adapter read-through and poly-G rates this script also reports
+are precisely the quantity it distorts.
+
+Runtime: stage 1 is ~4 min per genome pass (mouse ~2.7 GB, human ~3.1 GB
+gzipped). Stage 2 now decompresses all 20 fastqs end to end to reach their
+tails, which is the bulk of the job. Submit it, do not run it on a login node:
 
     sbatch code/flashseq/02_contaminant_check.sbatch
 """
@@ -55,7 +63,12 @@ FASTQ = Path(os.environ.get(
     "/nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/"
     "20260325_LH00442_0237_B23GT7GLT3/fastq",
 ))
-N_READS = int(os.environ.get("FS_SUBSAMPLE", "400000"))
+# Reads between sampled reads. Every READ_STRIDE-th read of every file is
+# screened, rather than the first N -- see config.sh's FS_STRIDE comment for the
+# measurement that made that change necessary. 01_rrna_kmer_screen.py and
+# 05_rrna_bwa.sh use the same variable, so with the default all three screen the
+# same reads.
+READ_STRIDE = int(os.environ.get("FS_STRIDE", "64"))
 
 REFS = [
     # (label, fasta path, gtf path or None)
@@ -312,17 +325,26 @@ def count_in_libraries(seqs: list[str]) -> dict[str, dict[str, dict[str, float]]
         per_mate: dict[str, dict[str, float]] = {}
         for mate, path in (("R1", r1), ("R2", r2)):
             counts = dict.fromkeys(seqs, 0)
-            total = 0
+            total = seen = 0
             with gzip.open(path, "rt") as fh:
                 for i, line in enumerate(fh):
                     if i % 4 != 1:
+                        continue
+                    seen += 1
+                    # Every READ_STRIDE-th read across the whole file. This used
+                    # to take the first N and stop, which is biased: a fastq is
+                    # ordered by flowcell position and adapter content drifts
+                    # along it (config.sh has the measurement). The bias is only
+                    # a few percent relative -- it never threatened the CALB1
+                    # finding, which is a 25x effect -- but the adapter
+                    # read-through and poly-G rates below ARE the quantity it
+                    # distorts, so they are worth getting right.
+                    if (seen - 1) % READ_STRIDE:
                         continue
                     total += 1
                     for s, (fwd, rev) in both.items():
                         if fwd in line or rev in line:
                             counts[s] += 1
-                    if total >= N_READS:
-                        break
             per_mate[mate] = {s: 100 * c / total for s, c in counts.items()}
         out[lib] = {s: {"R1": per_mate["R1"][s], "R2": per_mate["R2"][s]} for s in seqs}
         print(f"  {lib}: counted {len(seqs)} sequences in {total:,} reads x 2 mates",

@@ -236,6 +236,26 @@ def main():
       "library can be checked against directly, and it lands: the paper says <strong>1.4%</strong> "
       f'sncRNA for VASA-plate, the deposited table gives <strong>{g("sncRNA UFI share, published (%)")}%</strong>, '
       f'and our re-run gives <strong>{g("sncRNA UFI share, ours (%)")}%</strong>.</p></div>')
+    # --- the one place we diverge --------------------------------------------
+    ours_col = [c for c in bs.columns if c.startswith("ours")][0]
+    div = bs[(bs["published"] > 0) & (bs[ours_col] / bs["published"] > 2)]
+    A("<h3>Where we diverge — one biotype, and it is one gene</h3>")
+    A("<p>Every biotype agrees with the deposited table within a factor of two except "
+      "<code>rRNA</code>, where our share is <strong>~600× higher</strong> "
+      f'({fmt(bs.loc["rRNA", ours_col]) if "rRNA" in bs.index else "—"}% vs '
+      f'{fmt(bs.loc["rRNA", "published"]) if "rRNA" in bs.index else "—"}%). '
+      "Tracing it: the excess is <strong>a single locus</strong>, "
+      "<code>ENSMUSG00000106106_CT010467.1_rRNA</code> (mouse chr17, minus strand) — "
+      "<strong>95,823 UFIs in ours against 72 in the deposited table</strong>. Every other "
+      "rRNA-biotype gene agrees.</p>")
+    A('<div class="callout warn"><p><strong>Open, not diagnosed.</strong> That locus <em>is</em> '
+      "present in our rRNA FASTA (2,475 bp, extracted sense-strand), so this is not a missing "
+      "sequence. On one cell the surviving reads are 43 single-mappers (15 antisense, 28 sense) "
+      "and 135 multimappers. The <code>stranded=y</code> reprieve in "
+      "<code>riboread-selection.py</code> — a read whose only hits are antisense is kept — "
+      "explains the antisense fraction but <em>not</em> the sense-strand reads. Worth resolving "
+      "before this reference is used for anything where a 0.2% rRNA residue matters; it does not "
+      "affect the barnyard or the gene concordance above.</p></div>")
     A("<h3>Full biotype table</h3>")
     A(table(bs.round(4)))
 

@@ -71,6 +71,13 @@ START=${START:-2}
 ### replaced them.
 RIBOREF=${RIBOREF:-}
 
+### REFBED -- override the annotation BED chosen by the branch below. Same
+### situation as RIBOREF: the MIXED default has 0 tRNA rows despite being named
+### "...IntronExonTrna.bed", so every *_tRNA.*Counts.tsv step 7 writes is empty.
+### own_version/build_annotation_bed_mixed.sh builds the replacement. Only
+### stages 5-7 read this, so pair it with START=5.
+REFBED=${REFBED:-}
+
 EBROOT=/camp/apps/eb/software
 p2trimgalore=${EBROOT}/Trim_Galore/0.6.2-foss-2018b-Python-3.6.6
 p2cutadapt=${EBROOT}/cutadapt/1.18-foss-2018b-Python-3.6.6/bin
@@ -130,6 +137,7 @@ else
     exit 1
 fi
 if [ -n "$RIBOREF" ]; then riboref=$RIBOREF; fi
+if [ -n "$REFBED"  ]; then refBED=$REFBED;   fi
 
 ### preflight
 missing=0

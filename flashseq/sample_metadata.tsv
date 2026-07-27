@@ -1,0 +1,28 @@
+# FLASH-seq run RN26038 -- library metadata.
+#
+# Source: the RN26038 LIMS sample sheet (project RN26038, plate eASF_A07136,
+# container 27-960439), supplied by the user 2026-07-27. NOTHING in
+# data/flashseq/ carries this mapping -- the run directory, the samplesheet.csv
+# and the FASTQ filenames all know the libraries only as ZHA8833A1..A10. Without
+# this file the run looks like ten comparable samples, which it is not.
+#
+# The run is an input-amount titration in duplicate. input_pg is the input
+# amount normalised to picograms so it can be used as a numeric x-axis; a
+# mammalian cell carries ~10-30 pg of total RNA, so the 30 pg rung is the
+# single-cell-equivalent one and is the rung that matters for the VASA-seq
+# comparison.
+#
+# well is the position on plate eASF_A07136 and is NOT decoration: the human
+# CALB1 contamination reported in README.md tracks wells G:1/H:1, not input
+# amount, and that is only visible if the well is carried through the analysis.
+library	lims_name	input_amount	input_pg	replicate	well	lims_id
+ZHA8833A1	30ng_1	30 ng	30000	1	A:1	2-8914777
+ZHA8833A2	30ng_2	30 ng	30000	2	B:1	2-8914778
+ZHA8833A3	3ng_1	3 ng	3000	1	C:1	2-8914779
+ZHA8833A4	3ng_2	3 ng	3000	2	D:1	2-8914780
+ZHA8833A5	1pt5ng_1	1.5 ng	1500	1	E:1	2-8914781
+ZHA8833A6	1pt5ng_2	1.5 ng	1500	2	F:1	2-8914782
+ZHA8833A7	60pg_1	60 pg	60	1	G:1	2-8914783
+ZHA8833A8	60pg_2	60 pg	60	2	H:1	2-8914784
+ZHA8833A9	30pg_1	30 pg	30	1	A:2	2-8914785
+ZHA8833A10	30pg_2	30 pg	30	2	B:2	2-8914786

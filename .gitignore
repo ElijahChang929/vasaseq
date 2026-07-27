@@ -76,3 +76,7 @@ slurm-*.out
 .DS_Store
 *.swp
 *~
+
+# FLASH-seq QC: the notebook is generated from build_notebook.py, and its
+# executed copy (with figures inlined) belongs in res/flashseq/, not in git.
+flashseq/__pycache__/

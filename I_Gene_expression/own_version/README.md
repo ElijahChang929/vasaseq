@@ -735,6 +735,143 @@ population that only `bwa aln` could see.
 
 ---
 
+## Step 5: assigning reads to genes, and two bugs found there
+
+Step 5 turns "this read is at chr1:3,276,400" into "this read belongs to
+Xkr4, exonic". `deal_with_singlemappers.sh` and `deal_with_multimappers.sh` run
+off the **same** step-4 BAM and split it by how many places the read mapped —
+unique reads get counted directly, multimappers go through step 6's rescue
+hierarchy. Both are forked here; see "Where the fork differs" below.
+
+### What each script does, in four stages
+
+1. **Select reads, and move the CIGAR + mismatch count onto the read name.**
+   `$1 = $1 ";CG:" $6 ";nM:" nm`. This is necessary because the next stage
+   (`bamtobed`) flattens the SAM to 6 BED columns and the CIGAR would be lost.
+   The read name is the only channel that survives bedtools — the same trick
+   step 1 uses for the barcode and UMI.
+2. **`bamtobed`, then `bedtools sort`.** Note there is **no `-split`**: a read
+   spanning an intron becomes one interval covering the whole span, not two.
+   That is why the CIGAR had to be preserved in the name.
+3. **`bedtools intersect -wa -wb` against the annotation BED**, then a long awk.
+   Output is one row per *(read, overlapping feature)* pair — a read touching
+   three features gives three rows, deliberately; step 6 resolves them. The awk
+   keeps only same-strand overlaps (`STRANDED=y`), tags each row with `jS:`
+   (`IN` = read inside the feature, `OUT` = read spans past both ends →
+   **discarded**, `5`/`3` = hangs off one end), and computes `x`, the read's
+   normalised position along the *gene*.
+4. **gzip.** The multi script additionally `sort -k4` (by read name) first, so
+   step 6 sees each read's candidate loci contiguously. The single script does
+   not need it; upstream's commented-out line says `# unnecessary`.
+
+### The 9 output columns, and which ones step 6 actually reads
+
+| # | name | read by step 6? |
+|---|---|---|
+| 1–3 | Chromosome / Start / End | no |
+| 4 | Name (read name up to `;CG:`) | **yes** — UMI and cell id live here |
+| 5 | Strand | **no** |
+| 6 | Gene (`ENSMUSG..._Xkr4_ProteinCoding_exon`) | **yes** — split into Gene / Biotype / Label |
+| 7 | Info (`CG:...;nM:...;jS:...`) | **yes** — `nM` and `jS` extracted |
+| 8 | Length | **no** |
+| 9 | Cov (`x`) | **no** |
+
+Worth knowing before you trust a column: `Strand`, `Length` and `Cov` appear in
+`countTables_2pickle_cellsSpliced.py` **only** in the `read_csv(names=[...])`
+list and are never referenced again. `gene_assignment` uses just `nMs`, `jSs`,
+`Biotype`, `Gene`, `Label` and `Name`. And `jS` is only ever tested as
+`jSs == 'IN'` — `jS:5` and `jS:3` are never distinguished.
+
+### Where the fork differs
+
+Both bugs are upstream. `a_Mapping/` is left untouched (published code gets
+comments, not logic changes); the fixed copies live here and `config.sh` points
+at them via `ASSIGN_SINGLE_SH` / `ASSIGN_MULTI_SH`. Point those back at
+`${VASA_SCRIPTS}` for upstream behaviour.
+
+**1. `NH:i:10`–`NH:i:19` were silently dropped by both scripts.** Selection was
+done by matching raw SAM text:
+
+```awk
+$0 ~ /NH:i:1\tHI:i:1\t/     # single
+$0 ~ /NH:i:[2-9]/           # multi
+```
+
+`[2-9]` is a *single character*, so only the first digit after `NH:i:` is ever
+inspected. `NH:i:10` fails the single test (`1` is followed by `0`, not a TAB)
+and fails the multi test (`1` is not in `[2-9]`). `NH:i:20` passed the multi
+test only by accident, `NH:i:2` being a prefix of it. STAR here runs
+`--outFilterMultimapNmax 20`, so 10–19 is a legal range.
+
+Measured on cell 011, first 3,000,000 alignments:
+
+| NH | alignments | fate |
+|---|---|---|
+| 0 (unmapped, `--outSAMunmapped Within`) | 135,463 | correctly excluded |
+| 1 | 899,120 | single ✓ |
+| 2–9 | 1,680,905 | multi ✓ |
+| **10–19** | **273,092** | **dropped by both** |
+| 20 | 11,420 | multi, by accident |
+
+≈21,400 reads, **~1.5% of all reads and ~5% of multimapping reads**. The fork
+parses `NH` as a number (`nh==1`, `nh>=2`) instead of matching it as text.
+
+**2. `if (readstrand="+")` is an assignment, not a comparison** — 4 places per
+script. A single `=` in awk assigns and evaluates to the assigned value, so the
+condition is always true, the `else` is dead code, and `readstrand` itself is
+overwritten with `"+"`. The line exists because "which end does the read hang
+off" has to be translated from genome terms (left/right) into gene terms
+(5′/3′), and that translation depends on the strand:
+
+```
+                 |------------ exon -----------|
+Lypla1 (+)       5' ══════════════════════════> 3'     left = 5' end
+Xkr4   (−)       3' <══════════════════════════ 5'     left = 3' end
+```
+
+So a read hanging off the left edge should be `jS:5` on Lypla1 but `jS:3` on
+Xkr4. With the `=` it is `jS:5` in both cases. Two knock-on effects: the
+correctly-written `==` on the *next* line then computes `x` from the wrong end
+of the gene, and the printed Strand column becomes `+`.
+
+**This one does not change any count.** All three things it corrupts —
+`jS:5`/`jS:3`, `Strand`, `Cov` — are among the columns step 6 never reads (see
+the table above). It is fixed because it is wrong, and because anyone reaching
+for `Cov` or `Strand` as a QC column would be misled. Reads tagged `jS:IN` or
+`jS:OUT` never enter those branches at all.
+
+### Verified head-to-head on real data
+
+Both versions run against cell 001's step-4 BAM (job `50803918`), upstream vs
+fork, same reference, same arguments:
+
+**singlemappers — 50,752 rows both ways, and every column step 6 reads is
+byte-identical.** The `nh==1` test is therefore exactly equivalent to the old
+`NH:i:1\tHI:i:1\t` text match, as expected: fix 1 only ever concerned
+multimappers. Differences are confined to the three dead columns, on 18.7% of
+rows — those are the reads hanging off a feature edge on a minus-strand gene:
+
+| column | rows differing |
+|---|---|
+| 5 `Strand` | 9,504 (18.7%) |
+| 7 `Info` (the `jS:` part only) | 9,504 (18.7%) |
+| 9 `Cov` | 9,500 (18.7%) |
+
+**multimappers — 30,153 → 34,550 reads (+4,397), 83,658 → 110,290 rows
+(+31.8%), and no read lost.** Every one of the 4,397 recovered reads has an
+`NH` between 10 and 19 in the BAM — nothing outside that range appeared, which
+is the point:
+
+| NH | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| reads | 481 | 345 | 330 | 340 | 1583 | 492 | 319 | 173 | 119 | 215 |
+
+Reproduce with `$SCRATCH/step5cmp/cmp_step5.sh` (it copies the BAM into two
+directories and runs each version in its own, since both write their outputs
+next to the input).
+
+---
+
 ## What was actually changed vs. the published pipeline
 
 1. **`concatenator.py`** — strips `--skip5` nt from both mates before parsing
@@ -771,7 +908,16 @@ population that only `bwa aln` could see.
    handled from this side instead. See "Counting files is not proof" below.
 6. **`step2_report.py` / `step3_report.py`** — per-cell tables generated by the
    run itself, so no number in this README has to be reconstructed by hand.
-7. Everything else is the published pipeline, called unchanged.
+7. **`deal_with_singlemappers.sh` / `deal_with_multimappers.sh`** — forked for
+   two upstream bugs, both measured; see "Step 5" above. `NH:i:10`–`NH:i:19`
+   matched neither script's text pattern and were dropped by both (~5% of this
+   library's multimapping reads; the fork recovers 4,397 reads on cell 001,
+   all of them in that NH range). And `if (readstrand="+")` is an assignment,
+   not a comparison — fixed, though it changes no count, because the three
+   columns it corrupts are ones step 6 never reads. `ASSIGN_SINGLE_SH` /
+   `ASSIGN_MULTI_SH` in `config.sh` point back at `${VASA_SCRIPTS}` for upstream
+   behaviour.
+8. Everything else is the published pipeline, called unchanged.
 
 ---
 

@@ -267,6 +267,18 @@ TRIM_ANCHOR_PY="${TRIM_ANCHOR_PY:-${OWN_DIR}/trim_bc_anchor.py}"
 STEP2_REPORT="${STEP2_REPORT:-${OWN_DIR}/step2_report.py}"
 STEP3_REPORT="${STEP3_REPORT:-${OWN_DIR}/step3_report.py}"
 
+# Step 5. Forked from a_Mapping/ for two bugs, both measured -- read the header
+# of deal_with_singlemappers.sh for the full argument:
+#   1. NH:i:10..19 matched NEITHER script's selection pattern and were silently
+#      dropped by both (~5% of this library's multimapping reads). NH is now
+#      parsed as a number instead of matched as text.
+#   2. `if (readstrand="+")` is an assignment, not a comparison. Now `==`.
+#      This one does NOT change the count tables -- step 6 never reads the
+#      three columns it affected -- but it was wrong.
+# Point these back at ${VASA_SCRIPTS} to get upstream behaviour.
+ASSIGN_SINGLE_SH="${ASSIGN_SINGLE_SH:-${OWN_DIR}/deal_with_singlemappers.sh}"
+ASSIGN_MULTI_SH="${ASSIGN_MULTI_SH:-${OWN_DIR}/deal_with_multimappers.sh}"
+
 # --- cluster tools (EasyBuild module tree) -----------------------------------
 EBROOT=/camp/apps/eb/software
 P2TRIMGALORE=${EBROOT}/Trim_Galore/0.6.2-foss-2018b-Python-3.6.6

@@ -151,12 +151,14 @@ step_check() {
     done
 
     # -- our own + borrowed scripts --
-    for own in "$CONCATENATOR" "$TRIM_SH" "$TRIM_ANCHOR_PY"; do
+    for own in "$CONCATENATOR" "$TRIM_SH" "$TRIM_ANCHOR_PY" \
+               "$ASSIGN_SINGLE_SH" "$ASSIGN_MULTI_SH"; do
         [ -x "$own" ] && echo "  OK   $own" || { echo "  MISS/NOT-EXEC $own"; bad=1; }
     done
-    # trim.sh is ours now, so it is not in this list
-    for s in ribo-bwamem.sh riboread-selection.py deal_with_singlemappers.sh \
-             deal_with_multimappers.sh countTables_2pickle_cellsSpliced.py countTables_fromPickle.py; do
+    # trim.sh and the two deal_with_*mappers.sh are ours now, so they are not
+    # in the borrowed list below
+    for s in ribo-bwamem.sh riboread-selection.py \
+             countTables_2pickle_cellsSpliced.py countTables_fromPickle.py; do
         [ -x "${VASA_SCRIPTS}/$s" ] && echo "  OK   ${VASA_SCRIPTS}/$s" \
             || { echo "  MISS/NOT-EXEC ${VASA_SCRIPTS}/$s"; bad=1; }
     done
@@ -546,9 +548,10 @@ do_assign() {
     local stem="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out"
     rm_stale "${stem}.singlemappers_genes.bed.gz" "${stem}.singlemappers_genes.bed" \
              "${stem}.nsorted.multimappers_genes.bed.gz" "${stem}.nsorted.multimappers_genes.bed"
-    "${VASA_SCRIPTS}/deal_with_singlemappers.sh" "$bam" "$REF_BED" "$STRANDED" \
+    # Forked from a_Mapping/ -- see config.sh and the scripts' own headers.
+    "$ASSIGN_SINGLE_SH" "$bam" "$REF_BED" "$STRANDED" \
         "$P2SAMTOOLS" "$P2BEDTOOLS" > /dev/null 2>&1 || echo "  FAILED single: $cell"
-    "${VASA_SCRIPTS}/deal_with_multimappers.sh"  "$bam" "$REF_BED" "$STRANDED" \
+    "$ASSIGN_MULTI_SH"  "$bam" "$REF_BED" "$STRANDED" \
         "$P2SAMTOOLS" "$P2BEDTOOLS" > /dev/null 2>&1 || echo "  FAILED multi: $cell"
 }
 step5_assign() {

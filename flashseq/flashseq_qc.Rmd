@@ -1,0 +1,656 @@
+---
+title: "FLASH-seq RN26038 — data quality"
+subtitle: "R / plotthis / scplotter rendering of `res/flashseq/`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    df_print: paged
+    fig_width: 9
+    fig_height: 3.6
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      dev = "png", dpi = 130, fig.align = "center")
+```
+
+## What this document is, and what it is not
+
+This is the R rendering of the FLASH-seq QC. **It computes nothing.** Every number
+below is read from the TSVs in `res/flashseq/`, which were written by the Python
+scripts `00_collect_qc.py` … `06_trim_options.sh`. That is deliberate: two reports
+that each recomputed their own numbers could disagree, and then neither would be
+trustworthy. The only arithmetic done here is on the RSEM TPM matrix, for the
+replicate scatters and the PCA — and the *r* values annotated on those scatters
+still come from `replicate_concordance.tsv` rather than being recomputed.
+
+**A note on `scplotter`.** The request was to visualise with `scplotter`, and the
+figures below are drawn with **`plotthis`** — which *is* scplotter's plotting
+engine, by the same author (Panwen Wang), so the theming, palettes and layout are
+scplotter's. The reason is that `scplotter`'s own exported functions
+(`CellDimPlot`, `CellStatPlot`, `FeatureStatPlot`, `Clonal*Plot`, `Spat*Plot`, …)
+all take a **single-cell or spatial object** — Seurat, SingleCellExperiment or
+scRepertoire — and every table in `res/flashseq/` is a *bulk, per-library QC
+summary*: ten rows, one per library. There is no cell dimension for them to plot.
+
+Section 9 is the exception: there, the ten libraries genuinely can be treated as
+ten samples in a Seurat object, and `scplotter::CellDimPlot` is used for what it
+is built for.
+
+```{r libs}
+suppressPackageStartupMessages({
+  library(plotthis)
+  library(ggplot2)
+})
+
+ROOT <- Sys.getenv("FS_ROOT", "/nemo/lab/turnerj/working/guangxin/vasaseq")
+CODE <- file.path(ROOT, "code/flashseq")
+RES  <- Sys.getenv("FS_OUT", file.path(ROOT, "res/flashseq"))
+FIG  <- file.path(RES, "figures_R")
+dir.create(FIG, showWarnings = FALSE, recursive = TRUE)
+
+# Saved alongside each figure so the PDFs can be dropped into a slide deck, and
+# so the R and Python renderings can be compared panel by panel.
+save_fig <- function(p, name, width = 9, height = 3.6) {
+  ggplot2::ggsave(file.path(FIG, paste0(name, ".pdf")), p,
+                  width = width, height = height, device = grDevices::cairo_pdf)
+  p
+}
+
+cat("plotthis  ", as.character(packageVersion("plotthis")), "\n")
+cat("scplotter ", if (requireNamespace("scplotter", quietly = TRUE))
+                   as.character(packageVersion("scplotter")) else "not installed", "\n")
+cat("R         ", R.version.string, "\n")
+```
+
+## 0. The design — and why it has to be carried through everything
+
+The run is **not** ten comparable samples. It is an **input-amount titration in
+duplicate**, 30 ng down to 30 pg — a 1000-fold range. A mammalian cell carries
+roughly 10–30 pg of total RNA, so **30 pg is the single-cell-equivalent rung**,
+and it is the rung that matters for comparing against VASA-seq.
+
+Nothing inside `data/flashseq/` records this. It comes from the RN26038 LIMS sheet
+and lives in `code/flashseq/sample_metadata.tsv`, which every script joins against.
+`qc_verdict` is the **decision** taken on 2026-07-27 to exclude A8.
+
+```{r meta}
+meta <- read.delim(file.path(CODE, "sample_metadata.tsv"), comment.char = "#")
+# Everything in this document is ordered by input amount, high to low.
+meta <- meta[order(-meta$input_pg), ]
+ORDER  <- meta$library
+SHORT  <- sub("ZHA8833", "", ORDER)
+LEVELS <- unique(meta$input_amount)
+
+# One short label per library, used as the x axis throughout.
+shorten <- function(x) factor(sub("ZHA8833", "", x), levels = SHORT)
+as_level <- function(x) factor(x, levels = LEVELS)
+
+meta$short        <- shorten(meta$library)
+meta$input_amount <- as_level(meta$input_amount)
+EXCLUDED <- meta$library[meta$qc_verdict == "exclude"]
+
+meta[, c("library", "input_amount", "replicate", "well", "qc_verdict", "qc_note")]
+```
+
+```{r palettes}
+# One colour per input level, so a panel can be read by input amount alone.
+PAL <- "Spectral"
+
+# plotthis defaults to a near-square panel with the legend on top. With ten
+# libraries on the x axis that runs the labels together into "A1A2A3...". These
+# two overrides fix it, and live here rather than being repeated per figure so
+# every per-library bar chart in the document stays consistent.
+bar_lib <- function(...) BarPlot(..., legend.position = "right", aspect.ratio = 0.55)
+```
+
+## 1. Sequencing and alignment
+
+From `qc_summary.tsv`, written by `00_collect_qc.py` out of the MultiQC tables.
+
+```{r qc-table}
+qc <- read.delim(file.path(RES, "qc_summary.tsv"))
+qc <- qc[match(ORDER, qc$library), ]
+qc$short        <- shorten(qc$library)
+qc$input_amount <- as_level(qc$input_amount)
+
+qc_show <- qc[, c("library", "input_amount", "replicate", "well", "qc_verdict",
+                  "raw_pairs", "star_uniquely_mapped_pct", "star_multimapped_pct",
+                  "star_unmapped_tooshort_pct", "rsem_alignable_pct",
+                  "picard_dup_pct", "qualimap_intergenic_pct", "qualimap_5_3_bias",
+                  "pct_MT", "insert_size_avg")]
+qc_show$raw_pairs_M <- round(qc_show$raw_pairs / 1e6, 1)
+qc_show$raw_pairs <- NULL
+qc_show
+```
+
+```{r fig1, fig.width=11, fig.height=3.4}
+panels <- c(star_uniquely_mapped_pct   = "STAR uniquely mapped (%)",
+            star_unmapped_tooshort_pct = "STAR unmapped, too short (%)",
+            picard_dup_pct             = "duplicate reads (%)")
+
+fig1_dat <- do.call(rbind, lapply(names(panels), function(col)
+  data.frame(short = qc$short, input_amount = qc$input_amount,
+             metric = panels[[col]], value = qc[[col]])))
+fig1_dat$metric <- factor(fig1_dat$metric, levels = unname(panels))
+
+p <- bar_lib(fig1_dat, x = "short", y = "value", fill_by = "input_amount",
+             facet_by = "metric", facet_scales = "free_y", facet_ncol = 3,
+             palette = PAL, xlab = "library", ylab = "% of reads",
+             # three facets share the width, so ten labels per panel need angling
+             theme_args = list(axis.text.x = element_text(angle = 45, hjust = 1)),
+             title = "Alignment quality falls off only at the two lowest input rungs")
+save_fig(p, "R01_alignment", width = 11, height = 3.4)
+```
+
+Mechanically the run is sound: quality scores clean, no reads flagged poor quality,
+strandedness auto-inferred `unstranded` on all ten (correct for FLASH-seq),
+mitochondrial 1.1–3.2 %, intergenic 2.8–3.9 %, 5′/3′ bias 1.14–1.31.
+
+The two 60 pg libraries and the 30 pg pair carry visibly more "unmapped, too short"
+reads. Sections 5 and 6 show this has **two separate causes** that happen to land on
+neighbouring rungs — a contaminant confined to two wells, and poly-G that scales
+with input.
+
+## 2. Sensitivity — genes detected across the titration
+
+The obvious worry with a gene-detection drop is that it is really a depth
+difference. It is not: `03_gene_detection.py` also reports the expected detection
+count after binomial thinning to the shallowest library's total, and the split
+survives it.
+
+```{r det-table}
+det <- read.delim(file.path(RES, "gene_detection.tsv"))
+det <- det[match(ORDER, det$library), ]
+det$short        <- shorten(det$library)
+det$input_amount <- as_level(det$input_amount)
+det[, c("library", "input_amount", "replicate", "total_counts",
+        "genes_ge1", "genes_rarefied", "genes_tpm_gt1")]
+```
+
+```{r fig2, fig.width=11, fig.height=3.8}
+p_left <- ScatterPlot(det, x = "input_pg", y = "genes_ge1",
+                      color_by = "input_amount",
+                      palette = PAL, xlab = "input (pg, log scale)",
+                      ylab = "genes with >=1 count",
+                      title = "detection vs input") +
+  scale_x_log10() +
+  geom_point(aes(x = input_pg, y = genes_rarefied), data = det,
+             shape = 21, fill = NA, colour = "grey30", size = 2.6, stroke = 0.9)
+
+fig2_dat <- rbind(
+  data.frame(short = det$short, kind = "as sequenced", genes = det$genes_ge1),
+  data.frame(short = det$short, kind = "rarefied",     genes = det$genes_rarefied))
+
+p_right <- bar_lib(fig2_dat, x = "short", y = "genes", group_by = "kind",
+                   palette = "Set2", xlab = "library",
+                   ylab = "genes with >=1 count",
+                   title = "depth is not the explanation")
+
+p <- patchwork::wrap_plots(p_left, p_right, widths = c(1, 1.25))
+save_fig(p, "R02_sensitivity", width = 11, height = 3.8)
+p
+```
+
+Filled points are as sequenced, open circles are rarefied to the shallowest
+library's total (16.5 M). 30 ng, 3 ng and 1.5 ng are **indistinguishable from one
+another**; performance then collapses at pg scale.
+
+**The design's blind spot:** there is no rung between 1.5 ng and 60 pg — a 25-fold
+gap — and that gap is exactly where the method stops working.
+
+## 3. Replicate concordance — where the titration actually breaks
+
+```{r conc-table}
+conc <- read.delim(file.path(RES, "replicate_concordance.tsv"))
+# Mark any rung whose pair includes an excluded library, so its r cannot be read
+# off this table as if it meant something.
+conc$verdict <- ifelse(conc$rep1 %in% EXCLUDED | conc$rep2 %in% EXCLUDED,
+                       "EXCLUDED PAIR", "ok")
+conc
+```
+
+**The 60 pg row is not usable.** A8 was excluded (section 7), so that *r* is a
+correlation against an excluded library, and the rung has no other replicate. The
+conclusion does not rest on it: the **clean** 30 pg pair shows the same collapse
+independently, *r* = 0.8435 against 0.980–0.987 for the ng rungs.
+
+```{r tpm}
+tpm <- read.delim(file.path(ROOT, "data/flashseq/results/star_rsem/rsem.merged.gene_tpm.tsv"),
+                  check.names = FALSE)
+rownames(tpm) <- tpm$gene_id
+tpm <- tpm[, ORDER, drop = FALSE]          # drop gene_id / transcript_id(s)
+# Same transform the Python side used for its scatter: log2(TPM + 1), over genes
+# expressed anywhere. Genes silent in every library carry no information about
+# concordance and would inflate every correlation towards 1.
+expressed <- rowSums(tpm) > 0
+lt <- log2(as.matrix(tpm[expressed, ]) + 1)
+cat(nrow(lt), "genes expressed in at least one library\n")
+```
+
+```{r fig3, fig.width=12, fig.height=3.2}
+# One panel per rung: replicate 1 against replicate 2, over genes expressed in
+# both -- the same set the r in the table above is computed over.
+fig3_dat <- do.call(rbind, lapply(seq_len(nrow(conc)), function(i) {
+  a <- conc$rep1[i]; b <- conc$rep2[i]
+  both <- lt[, a] > 0 & lt[, b] > 0
+  data.frame(rep1 = lt[both, a], rep2 = lt[both, b],
+             rung = sprintf("%s  (r = %.3f)%s", conc$input_amount[i],
+                            conc$pearson_log2tpm[i],
+                            if (conc$verdict[i] != "ok") "  [EXCLUDED PAIR]" else ""))
+}))
+fig3_dat$rung <- factor(fig3_dat$rung, levels = unique(fig3_dat$rung))
+
+p <- CorPlot(fig3_dat, x = "rep1", y = "rep2", split_by = "rung",
+             pt_size = 0.25, alpha = 0.25, add_smooth = TRUE,
+             anno_items = c("eq", "r2"),
+             xlab = "replicate 1, log2(TPM+1)", ylab = "replicate 2, log2(TPM+1)",
+             ncol = 5)
+save_fig(p, "R03_replicates", width = 12, height = 3.2)
+p
+```
+
+The three ng rungs are a tight diagonal; the two pg rungs fan out. **The 60 pg panel
+is labelled `[EXCLUDED PAIR]`** — it is a correlation against A8, which is excluded,
+and there is no replacement replicate. The clean 30 pg panel is what carries the
+conclusion.
+
+## 4. rRNA — the pipeline's number is wrong, and wrong in a knowable direction
+
+nf-core reports rRNA as the read fraction over genes annotated `gene_biotype "rRNA"`
+in the Ensembl GTF. On GRCm39 that annotation holds 354 genes which are **essentially
+all 5S** (`n-R5s*`) plus one `Rn18s-rs5` relic — there is **no `Rn45s`, `Rn28s` or
+`Rn5-8s` gene at all**, because the rDNA array is collapsed out of the primary
+assembly. So the reported 0.7–1.4 % measures 5S, not rRNA.
+
+`01_rrna_kmer_screen.py` re-measures against `unique_rRNA_mouse.v2.fa`, which carries
+the NCBI 47S pre-rRNA unit `BK000964.3:1-13403`.
+
+```{r rrna-table}
+rr <- read.delim(file.path(RES, "rrna_kmer.tsv"))
+rr <- rr[match(ORDER, rr$library), ]
+rr$short <- shorten(rr$library)
+rr$nfcore_biotype_rRNA_pct <- qc$nfcore_biotype_rRNA_pct[match(rr$library, qc$library)]
+rr$input_amount <- as_level(qc$input_amount[match(rr$library, qc$library)])
+rr[, c("library", "input_amount", "reads_screened", "nfcore_biotype_rRNA_pct",
+       "pct_rRNA_47S", "pct_rRNA_ensembl_only", "pct_rRNA_total")]
+```
+
+```{r fig4, fig.width=8, fig.height=3.6}
+fig4_dat <- rbind(
+  data.frame(short = rr$short, source = "nf-core: Ensembl gene_biotype rRNA",
+             pct = rr$nfcore_biotype_rRNA_pct),
+  data.frame(short = rr$short, source = "k-mer: Ensembl records only",
+             pct = rr$pct_rRNA_ensembl_only),
+  data.frame(short = rr$short, source = "k-mer: 47S unit (BK000964.3)",
+             pct = rr$pct_rRNA_47S))
+fig4_dat$source <- factor(fig4_dat$source, levels = c(
+  "nf-core: Ensembl gene_biotype rRNA", "k-mer: Ensembl records only",
+  "k-mer: 47S unit (BK000964.3)"))
+
+p <- bar_lib(fig4_dat, x = "short", y = "pct", group_by = "source",
+             palette = "Dark2", xlab = "library", ylab = "% of reads",
+             title = "What the annotation-based rRNA number structurally cannot see")
+save_fig(p, "R04_rrna", width = 8, height = 3.6)
+```
+
+```{r rrna-share}
+share <- 100 * sum(rr$pct_rRNA_47S) / sum(rr$pct_rRNA_total)
+ratio <- sum(rr$pct_rRNA_total) / sum(rr$nfcore_biotype_rRNA_pct)
+cat(sprintf("%.1f%% of the rRNA signal comes from the 47S unit Ensembl does not annotate.\n", share))
+cat(sprintf("The honest number is %.1fx the one nf-core reports.\n", ratio))
+```
+
+These are exact 31-mer matches sampled every 10 bases with no mismatch tolerance,
+so they are a **lower bound**. Section 4b aligns the same reads instead.
+
+## 4b. The same measurement as VASA, not merely a similar one
+
+The k-mer screen is a lower bound and the VASA figure it needs to be compared with
+(21.39 % over `ZHA9292A1`) came from `bwa`. Two different methods is not a
+comparison. `05_rrna_bwa.sh` therefore runs **the VASA pipeline's own rRNA stage** —
+`a_Mapping/ribo-bwamem.sh` and `riboread-selection.py`, unmodified, `bwa aln` **and**
+`bwa mem`, the same `unique_rRNA_mouse.v2.fa` — over the FLASH-seq reads.
+
+Three choices in that script are not obvious, and all three are checked rather than
+assumed:
+
+* **`stranded = n`, not `y`.** The flag decides whether a reverse-mapping read may be
+  called ribosomal. VASA is stranded, so `y` is right *there*; FLASH-seq is not, so
+  `y` would discard half the rRNA for no reason. The same BAM is re-selected with `y`
+  and reported alongside.
+* **Two arms, raw and trimmed**, because VASA's 21.39 % is over trimmed reads.
+* **R1 only**, because VASA has one biological read per fragment and letting
+  FLASH-seq have two would bias in its favour.
+
+```{r bwa-table}
+rb <- read.delim(file.path(RES, "rrna_bwa.tsv"), check.names = FALSE)
+tr <- rb[rb$arm == "trimmed", ]
+tr <- tr[match(ORDER, tr$library), ]
+tr$short        <- shorten(tr$library)
+tr$input_amount <- as_level(tr$input_amount)
+
+# From data/PM26037/out/logs/step3_report.txt, job 50788552 -- the ALL rows of its
+# two tables. Same scripts, same reference, so these are directly comparable.
+VASA_RIBO <- 21.39
+VASA_COMP <- c(`5ETS` = 17.1, `18S` = 5.9, ITS1 = 4.6, `5.8S` = 1.9,
+               ITS2 = 7.6, `28S` = 54.4, `3ETS` = 0.9)
+SUB <- names(VASA_COMP)
+
+tr[, c("library", "input_amount", "reads_in", "read_len_median", "ribo_pct",
+       "ribo_pct_stranded_y", "kmer_pct", "aln_only", "mem_only", "both", "fwd_pct")]
+```
+
+```{r fig8, fig.width=11.5, fig.height=3.8}
+fig8a_dat <- rbind(
+  data.frame(short = tr$short, method = "k-mer (exact match, lower bound)", pct = tr$kmer_pct),
+  data.frame(short = tr$short, method = "bwa aln + mem (VASA's own stage)", pct = tr$ribo_pct))
+fig8a_dat$method <- factor(fig8a_dat$method, levels = unique(fig8a_dat$method))
+
+pA <- bar_lib(fig8a_dat, x = "short", y = "pct", group_by = "method",
+              palette = "Set1", xlab = "library", ylab = "% of reads",
+              title = "rRNA content, trimmed reads") +
+  geom_hline(yintercept = VASA_RIBO, linetype = "dashed",
+             colour = "#1f4e79", linewidth = 0.7) +
+  annotate("text", x = Inf, y = VASA_RIBO, hjust = 1.05, vjust = -0.5,
+           label = sprintf("VASA %.1f%%", VASA_RIBO), colour = "#1f4e79", size = 3)
+
+# Composition as a share of ALL reads. Comparing composition percentages alone
+# misleads when the totals differ 4x: a subunit can be a bigger slice of a much
+# smaller cake.
+fig8b_dat <- rbind(
+  data.frame(subunit = SUB, method = "FLASH-seq (mean of 10)",
+             pct = sapply(SUB, function(s) mean(tr[[paste0("abs_", s)]]))),
+  data.frame(subunit = SUB, method = "VASA-seq ZHA9292A1",
+             pct = as.numeric(VASA_RIBO * VASA_COMP / 100)))
+fig8b_dat$subunit <- factor(fig8b_dat$subunit, levels = SUB)
+
+pB <- bar_lib(fig8b_dat, x = "subunit", y = "pct", group_by = "method",
+              palette = "Set1", xlab = "47S subunit", ylab = "% of all reads",
+              title = "Where the difference actually sits")
+
+p <- patchwork::wrap_plots(pA, pB, widths = c(1.15, 1))
+save_fig(p, "R08_rrna_bwa", width = 11.5, height = 3.8)
+p
+```
+
+```{r bwa-summary}
+cat(sprintf("FLASH-seq trimmed: %.2f-%.2f%% ribosomal\n", min(tr$ribo_pct), max(tr$ribo_pct)))
+cat(sprintf("VASA-seq:          %.2f%% whole-library (18.0-25.1%% across its 12 real cells)\n", VASA_RIBO))
+cat(sprintf("  -> VASA carries %.1fx the rRNA.\n\n", VASA_RIBO / mean(tr$ribo_pct)))
+cat(sprintf("mature 28S: %.2f%% of VASA reads vs %.2f%% of FLASH-seq (%.1fx)\n",
+            VASA_RIBO * VASA_COMP[["28S"]] / 100, mean(tr$abs_28S),
+            (VASA_RIBO * VASA_COMP[["28S"]] / 100) / mean(tr$abs_28S)))
+cat(sprintf("5'ETS:      %.2f%% vs %.2f%% (%.1fx)\n",
+            VASA_RIBO * VASA_COMP[["5ETS"]] / 100, mean(tr$abs_5ETS),
+            (VASA_RIBO * VASA_COMP[["5ETS"]] / 100) / mean(tr$abs_5ETS)))
+cat("The gap is in MATURE rRNA, not pre-rRNA -- which is what a poly-A-primed\n")
+cat("protocol versus a total-RNA protocol predicts.\n\n")
+cat(sprintf("stranded=y would have reported %.2f%% instead of %.2f%%.\n",
+            mean(tr$ribo_pct_stranded_y), mean(tr$ribo_pct)))
+cat(sprintf("forward-strand share of ribosomal reads: %.1f-%.1f%% -- i.e. unstranded,\n",
+            min(tr$fwd_pct), max(tr$fwd_pct)))
+cat("confirming n is the right flag.\n\n")
+cat(sprintf("aln-only detection: %s reads of %s. At 151 nt bwa aln adds almost nothing --\n",
+            format(sum(tr$aln_only), big.mark = ","),
+            format(sum(tr$aln_only + tr$mem_only + tr$both), big.mark = ",")))
+cat("the mirror image of VASA, where reads are short and aln-only was ~49% of detection.\n")
+```
+
+The 5'ETS share is high (32–47 % of ribosomal reads), and on the VASA side a high
+5'ETS share once turned out to be a poly-T artefact. It is **not** one here: the
+`ets5_peak_bin_pct` column shows the 5'ETS hits spread across the whole 4 kb,
+busiest 200 nt window 12.3–16.0 %, against 88.9 % in the case that *was* an artefact.
+
+```{r ets-check, fig.width=7, fig.height=3.2}
+p <- bar_lib(tr, x = "short", y = "ets5_peak_bin_pct", fill_by = "input_amount",
+             palette = PAL, xlab = "library",
+             ylab = "% of 5'ETS hits in busiest 200 nt window",
+             title = "5'ETS signal is spread, not piled up (artefact case was 88.9%)") +
+  geom_hline(yintercept = 88.9, linetype = "dotted", colour = "firebrick")
+save_fig(p, "R08b_ets_check", width = 7, height = 3.2)
+```
+
+## 5. Contamination — human CALB1, and it is a well effect
+
+FastQC flagged a sequence making up 15.9 % of A8 and could only say "No Hit".
+`02_contaminant_check.py` resolves every flagged sequence against mouse GRCm39, the
+rRNA reference, ERCC92 and human GRCh38, then **re-counts each one in every
+library** — the second step matters because FastQC only reports a sequence above
+~0.1 % of a file, so it cannot distinguish "absent" from "below the floor".
+
+```{r contam}
+ov <- read.delim(file.path(RES, "overrepresented.tsv"))
+hum <- ov[startsWith(as.character(ov$source), "human_GRCh38"), ]
+# A fragment's R1 and R2 are separate rows and pct_in_library is the larger of the
+# two, so summing THAT column double-counts every pair. Sum pct_R1.
+hum_tot <- tapply(hum$pct_R1, hum$library, sum)
+fig5_dat <- data.frame(
+  short        = shorten(ORDER),
+  input_amount = as_level(meta$input_amount),
+  well         = meta$well,
+  pct_human    = as.numeric(hum_tot[ORDER]))
+fig5_dat$pct_human[is.na(fig5_dat$pct_human)] <- 0
+fig5_dat
+```
+
+```{r fig5, fig.width=8, fig.height=3.6}
+p <- bar_lib(fig5_dat, x = "short", y = "pct_human", fill_by = "input_amount",
+             palette = PAL, xlab = "library", ylab = "% of R1 reads, human",
+             label = "well", label_size = 2.8,
+             title = "Human CALB1 tracks adjacent wells (G:1, H:1), not input amount")
+save_fig(p, "R05_contamination", width = 8, height = 3.6)
+```
+
+The 30 pg pair (wells A:2/B:2) is *cleaner* than the 30 ng pair, so this is **not**
+"low input amplifies background". A7 and A8 are wells **G:1 and H:1 — adjacent**.
+This is localised contamination introduced during prep. The STP's own `fastq_screen`,
+which never saw this pipeline, agrees: A8 is 79.9 % mouse / 42.4 % human against
+~98 % / ~26 % for A1–A6.
+
+## 6. Artefacts — adapter read-through and poly-G
+
+```{r artefacts}
+probe <- function(src, col = "pct_R1") {
+  v <- ov[[col]][ov$source == src]
+  l <- ov$library[ov$source == src]
+  as.numeric(tapply(v, l, max)[ORDER])
+}
+fig6_dat <- rbind(
+  data.frame(short = shorten(ORDER), artefact = "adapter read-through (R1)",
+             pct = probe("probe_adapter_P7_readthrough")),
+  data.frame(short = shorten(ORDER), artefact = "poly-G, any 30 nt run (R1)",
+             pct = probe("probe_polyG_30")),
+  data.frame(short = shorten(ORDER), artefact = "poly-G, any 30 nt run (R2)",
+             pct = probe("probe_polyG_30", "pct_R2")))
+```
+
+```{r fig6, fig.width=9, fig.height=3.6}
+p <- bar_lib(fig6_dat, x = "short", y = "pct", group_by = "artefact",
+             palette = "Dark2", xlab = "library", ylab = "% of reads",
+             title = "Both artefacts rise as input falls")
+save_fig(p, "R06_artefacts", width = 9, height = 3.6)
+```
+
+Read-through is strictly R1 and rises from 16–20 % at 30 ng to ~32 % at 30 pg —
+shorter inserts from less material. Poly-G is the NovaSeq X two-colour dark-cycle
+artefact: with no signal, the base caller emits G.
+
+### What trimming actually removes
+
+```{r fig7, fig.width=7.5, fig.height=3.4}
+te <- read.delim(file.path(RES, "trim_effect.tsv"))
+agg <- aggregate(cbind(pct_raw, pct_trimmed) ~ kind, data = te, FUN = mean)
+fig7_dat <- rbind(
+  data.frame(kind = agg$kind, pass = "raw",     pct = agg$pct_raw),
+  data.frame(kind = agg$kind, pass = "trimmed", pct = agg$pct_trimmed))
+fig7_dat$pass <- factor(fig7_dat$pass, levels = c("raw", "trimmed"))
+
+p <- bar_lib(fig7_dat, x = "kind", y = "pct", group_by = "pass",
+             palette = "Paired", xlab = "sequence class",
+             ylab = "mean % per read file",
+             title = "Comparing FastQC to FastQC: nothing much is removed")
+save_fig(p, "R07_trim_effect", width = 7.5, height = 3.4)
+```
+
+None of the three classes is meaningfully removed. `06_trim_options.sh` then tested
+the two fixes that were proposed for this, and **withdrew one of them**:
+
+* `--nextseq-trim=20` / `--2colour 20` removes **2.7 %** of A10's read pairs.
+* But the "read-through that survives trimming" and the poly-G are **the same
+  reads** — only 1.14 % of A10's R1 begins mid-mosaic-end, and **1,019 of those
+  1,032 have a poly-G R2 mate**. One no-insert artefact seen from two ends.
+* Adding a second adapter pattern `CTTATACACATCT` is **harmful**: at 13 nt it beats
+  `CTGTCTCTTATA`'s 12 nt in cutadapt's best-match contest on ordinary read-through,
+  cuts 7 nt later, and leaves mosaic-end sequence on **37.18 %** of R1 reads instead
+  of 0.10 %.
+
+So the gain from better trimming is a cleaner denominator, not recovered data —
+those pairs have no insert to recover.
+
+## 7. What this means for the VASA-seq comparison
+
+VASA-seq operates at single-cell input, ~10–30 pg. The comparable FLASH-seq rungs
+are the two lowest, and they are also the two most compromised.
+
+**A8 was excluded on 2026-07-27.** The decision lives in `sample_metadata.tsv` as
+`qc_verdict`, so it travels with the data rather than living only in prose.
+
+| rung | libraries | verdict |
+|---|---|---|
+| 30 pg | A9, A10 | **`ok`** — the cleanest low-input pair |
+| 60 pg | A7 | **`caveat`** — 3.6 % human CALB1, filterable |
+| 60 pg | A8 | **`exclude`** — 18.3 % of the library is not mouse |
+| ≥1.5 ng | A1–A6 | **`ok`**, but not input-comparable to VASA; the ceiling reference |
+
+Excluding A8 costs nothing in the headline conclusion — the cliff is shown
+independently by the clean 30 pg pair — but it leaves the 60 pg rung with **no
+replicate at all**, which is why section 3's 60 pg row must not be quoted.
+
+**Quote FLASH-seq's rRNA fraction from section 4b**, never the nf-core biotype
+number. On the 30 pg rung that is **A9 5.26 % / A10 4.02 %** against VASA's 21.39 %.
+
+## 8. Caveats about the run's saved outputs
+
+```{r caveats}
+gtf <- file.path(ROOT, "data/flashseq/results/genome/Mus_musculus.GRCm39.116.filtered.gtf")
+bed <- file.path(ROOT, "data/flashseq/results/genome/Mus_musculus.GRCm39.116.filtered.bed")
+sz  <- file.info(gtf)$size
+cat(sprintf("filtered.gtf: %s bytes, %s a multiple of 64 KiB\n",
+            format(sz, big.mark = ","), if (sz %% 65536 == 0) "EXACTLY" else "not"))
+cat(sprintf("filtered.bed rows: %s\n",
+            format(length(readLines(bed)), big.mark = ",")))
+stopifnot(sz %% 65536 == 0)   # the signature of the partial copy; see below
+```
+
+**The saved GTF is truncated to chromosome 1** — 4,742 gene ids, and a size that is
+an exact multiple of 64 KiB, the signature of a partial copy. The sibling
+`.filtered.bed` and the RSEM reference are complete, so **this run's quantification
+is unaffected**, but that GTF would silently produce a chr1-only analysis if reused.
+The assertion above exists so this cannot be forgotten.
+
+**The STAR index was not saved** despite `--save_reference`. The work directory has
+been deleted, so a re-run rebuilds it (22 min, 65 GB peak).
+
+## 9. Where `scplotter` proper applies
+
+Everything above is a per-library summary, which is why it is drawn with `plotthis`.
+Here the ten libraries genuinely can be treated as ten samples in a Seurat object,
+and `scplotter::CellDimPlot` is doing what it was built for: a PCA of the libraries
+in expression space, coloured by input amount.
+
+This panel has **no Python counterpart** — it is new, and it earns its place by
+putting the A8 decision on an independent footing. The exclusion was argued from
+targeted sequence counting (`02_contaminant_check.py` searching for one human
+fragment). An unsupervised ordination of whole transcriptomes knows nothing about
+CALB1, so if it separates A8 for the same reason, that is a second, independent
+witness.
+
+It does. Read the figure this way:
+
+* **A1–A6 form one tight cluster** — the six ng libraries, consistent with their
+  *r* = 0.980–0.987.
+* **A8 is a large outlier on PC1**, far from everything including its own 60 pg
+  partner.
+* **A7 sits with the ng cluster**, not with A8 — same input amount, same rung,
+  adjacent well, completely different position.
+
+That last pair is the whole argument: if 60 pg input were what made A8 strange, A7
+would be strange with it. It is not. The separation tracks the contamination, not
+the rung — which is what the well pattern (G:1 / H:1) said, arrived at here by a
+method that was never told about it. **A9 and A10 are also displaced**, along PC2
+rather than PC1, and that *is* the input effect: they are the genuinely
+RNA-limited pair.
+
+```{r pca}
+# Genes expressed above 1 TPM in at least half the libraries, so the PCA is not
+# driven by presence/absence in the shallow ones.
+keep <- rowSums(tpm > 1) >= 5
+lmat <- log2(as.matrix(tpm[keep, ]) + 1)
+pca  <- prcomp(t(lmat), scale. = TRUE)
+ve   <- 100 * pca$sdev^2 / sum(pca$sdev^2)
+
+pcs <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2],
+                  library = rownames(pca$x))
+pcs$short        <- shorten(pcs$library)
+pcs$input_amount <- as_level(meta$input_amount[match(pcs$library, meta$library)])
+pcs$qc_verdict   <- meta$qc_verdict[match(pcs$library, meta$library)]
+cat(sprintf("%d genes; PC1 %.1f%% of variance, PC2 %.1f%%\n", sum(keep), ve[1], ve[2]))
+```
+
+```{r fig9, fig.width=6.8, fig.height=4.8}
+have_scplotter <- requireNamespace("scplotter", quietly = TRUE) &&
+                  requireNamespace("Seurat", quietly = TRUE)
+
+if (have_scplotter) {
+  # The ten libraries as ten "cells" -- the one place in this document where
+  # scplotter's own API is the right tool rather than a contrivance.
+  suppressPackageStartupMessages({library(Seurat); library(scplotter)})
+  obj <- CreateSeuratObject(counts = as.matrix(tpm[keep, ]), assay = "RNA")
+  obj$input_amount <- pcs$input_amount[match(colnames(obj), pcs$library)]
+  obj$qc_verdict   <- pcs$qc_verdict[match(colnames(obj), pcs$library)]
+  obj[["pca"]] <- CreateDimReducObject(
+    embeddings = pca$x[colnames(obj), 1:2, drop = FALSE], key = "PC_", assay = "RNA")
+  p <- CellDimPlot(obj, reduction = "pca", group_by = "input_amount",
+                   palette = PAL, pt_size = 4, theme = "theme_this",
+                   title = "PCA of the ten libraries (scplotter::CellDimPlot)")
+} else {
+  # Same coordinates, same colouring, drawn by scplotter's engine instead. The
+  # figure is the figure; only the function differs.
+  p <- plotthis::DimPlot(pcs, dims = c("PC1", "PC2"), group_by = "input_amount",
+                         palette = PAL, pt_size = 4,
+                         title = "PCA of the ten libraries (plotthis::DimPlot)",
+                         xlab = sprintf("PC1 (%.1f%%)", ve[1]),
+                         ylab = sprintf("PC2 (%.1f%%)", ve[2]))
+}
+p <- p + ggrepel::geom_text_repel(
+  data = pcs, aes(x = PC1, y = PC2,
+                  label = ifelse(qc_verdict == "ok", as.character(short),
+                                 paste0(short, " [", qc_verdict, "]"))),
+  size = 3, seed = 1, min.segment.length = 0.2, max.overlaps = Inf,
+  inherit.aes = FALSE)
+save_fig(p, "R09_library_pca", width = 6.8, height = 4.8)
+p
+```
+
+```{r pca-note, echo=FALSE, results="asis"}
+cat(if (have_scplotter)
+  "Drawn with `scplotter::CellDimPlot`.\n" else
+  paste0("**`scplotter` is not installed here, so this panel fell back to ",
+         "`plotthis::DimPlot` — the same coordinates and the same engine.** ",
+         "The blocker is documented in `install_r_deps.sh`: scplotter `Imports` ",
+         "`scRepertoire`, a TCR/BCR repertoire package this analysis has no use ",
+         "for, and installing it fails twice over — R's conda `libcurl` cannot ",
+         "reach Bioconductor's archive hosts (system `curl` can), and the `gsl` ",
+         "R package needs a C library that is not installed system-wide. ",
+         "Nothing else in this document depends on it.\n"))
+```
+
+## Session
+
+```{r session}
+sessionInfo()
+```

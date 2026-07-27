@@ -111,6 +111,32 @@ print(f"python {sys.version.split()[0]} at {sys.executable}: all modules present
 PYEOF
 }
 
+# --- R, for flashseq_qc.Rmd -------------------------------------------------
+# The R report reads the SAME TSVs in res/flashseq/ that the Python notebook
+# does. It recomputes nothing, so the two reports cannot disagree on a number.
+#
+# Interpreter: the shared conda env envs/r4.3 (R 4.3.3, 305 packages incl.
+# Seurat 5.3.0 and pandoc 3.8.3), used READ-ONLY. New packages go to FS_R_LIB
+# instead, for the same reason envs/vasa is left alone above -- and with a
+# sharper warning next door: envs/sct_R (R 4.5.2) is already broken, 280 package
+# directories of which 14 load, because conda clobbered their DESCRIPTION files
+# into DESCRIPTION.c~. Do not install into a shared env.
+export FS_R_ENV="${FS_R_ENV:-/nemo/lab/turnerj/working/guangxin/envs/r4.3}"
+export FS_R_LIB="${FS_R_LIB:-/nemo/lab/turnerj/working/guangxin/envs/Rlib_flashseq_4.3}"
+export FS_R_NCPUS="${FS_R_NCPUS:-4}"
+
+# Run R with FS_R_LIB ahead of the env's own library. Use this, not a bare R.
+fs_R() {
+    ( . "$FS_CONDA/etc/profile.d/conda.sh"
+      conda activate "$FS_R_ENV"
+      R_LIBS_USER="$FS_R_LIB" R "$@" )
+}
+fs_Rscript() {
+    ( . "$FS_CONDA/etc/profile.d/conda.sh"
+      conda activate "$FS_R_ENV"
+      R_LIBS_USER="$FS_R_LIB" Rscript "$@" )
+}
+
 # --- sampling ---------------------------------------------------------------
 # Reads per library for the two FASTQ-streaming screens. 400k R1 reads takes a
 # few minutes per library and puts the sampling error on a 4% rate at ~0.03%,

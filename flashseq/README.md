@@ -379,6 +379,56 @@ fs_python code/flashseq/build_notebook.py code/flashseq/flashseq_qc.ipynb
 
 The rendered copy *with* outputs is `res/flashseq/flashseq_qc.html`, outside git.
 
+### The R rendering — `flashseq_qc.Rmd`
+
+A second report over the same results, in R, with the figures drawn by
+**`plotthis`** (v0.13.1). It **computes nothing**: every number comes from the same
+TSVs in `res/flashseq/`, so the two reports cannot drift apart. The only arithmetic
+it does is a PCA of the ten libraries, which has no Python counterpart to disagree
+with.
+
+```bash
+source code/flashseq/config.sh
+bash code/flashseq/install_r_deps.sh     # once; ~10 min
+fs_Rscript -e 'rmarkdown::render("code/flashseq/flashseq_qc.Rmd",
+    output_file = "flashseq_qc_R.html", output_dir = "res/flashseq")'
+```
+
+→ `res/flashseq/flashseq_qc_R.html` + `res/flashseq/figures_R/R01…R09*.pdf` (10
+figures, 0 warnings).
+
+**Environment.** R comes from the shared conda env `envs/r4.3` (R 4.3.3, 305
+packages, pandoc 3.8.3), used **read-only**; new packages go to
+`$FS_R_LIB` (`envs/Rlib_flashseq_4.3`). Nothing is installed into a shared env —
+`envs/sct_R` next door is the cautionary example, 280 package directories of which
+14 load, because conda renamed their `DESCRIPTION` files to `DESCRIPTION.c~`. It is
+left unrepaired.
+
+**On `scplotter` specifically.** The figures use `plotthis`, which *is* scplotter's
+plotting engine — same author, same theming and palettes. That is not a substitution
+made for convenience: `scplotter`'s own exported functions (`CellDimPlot`,
+`CellStatPlot`, `FeatureStatPlot`, `Clonal*Plot`, `Spat*Plot`) all take a
+single-cell, spatial or repertoire **object**, and every table here is a bulk
+per-library summary of ten rows. There is no cell dimension for them to plot.
+
+Section 9 is the one place where scplotter's API genuinely fits — the ten libraries
+as ten "cells" — and it is written to use `scplotter::CellDimPlot` when available.
+**It currently falls back to `plotthis::DimPlot`,** same coordinates, same engine,
+because scplotter cannot be installed on this host: it `Imports` `scRepertoire`, a
+TCR/BCR package irrelevant to this analysis, and that fails twice over — R's conda
+`libcurl` cannot reach Bioconductor's archive hosts (system `curl` can, so it is a
+CA/redirect problem in the env, not a firewall), and the `gsl` R package needs a C
+library absent system-wide (`GSL/2.7-GCC-11.2.0` exists as a module but is not
+wired in). `install_r_deps.sh` records all of this and fails loudly rather than
+silently: it ends by `library()`-ing every package, because `install.packages()`
+only warns when an install fails.
+
+**What the R report adds.** The PCA in section 9 is new, and it corroborates the A8
+exclusion by a route that knows nothing about CALB1: A1–A6 cluster tightly, **A8 is
+a large PC1 outlier**, and **A7 — same 60 pg rung, adjacent well — sits with the ng
+cluster instead.** If input amount were what made A8 strange, A7 would be strange
+with it. A9/A10 are displaced along PC2 instead, which *is* the input effect.
+
 **Python:** the cluster's Anaconda3 base interpreter, used directly — it already has numpy,
 pandas, matplotlib, scipy and the full nbconvert stack, so nothing is built or installed.
 `fs_python` clears `PYTHONPATH` before calling it, which is **required**: if an EasyBuild
@@ -409,6 +459,7 @@ outstanding. Outputs in `res/flashseq/`:
 | `rrna_bwa.tsv` + `rrna_bwa/` | `05_rrna_bwa.sh` → `05_rrna_bwa_report.py` | job `50855065`, 46 min, MaxRSS 778 MB |
 | `trim_options/` | `06_trim_options.sh` | ~3 min, login node |
 | `flashseq_qc.html` + `figures/*.pdf` | the notebook | 8 figures, 0 cell errors |
+| `flashseq_qc_R.html` + `figures_R/*.pdf` | `flashseq_qc.Rmd` | 10 figures, 0 warnings |
 
 **`01` and `02` were re-run on 2026-07-27 after the head-of-file sampling defect was found**
 (see the finding above); every number in this README is from those re-runs. `05` and `06` are

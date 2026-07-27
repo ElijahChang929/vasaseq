@@ -870,6 +870,49 @@ Reproduce with `$SCRATCH/step5cmp/cmp_step5.sh` (it copies the BAM into two
 directories and runs each version in its own, since both write their outputs
 next to the input).
 
+### Results, ZHA9292A1 (job 50804554, 2026-07-27)
+
+15m02s, TotalCPU 2h28m, MaxRSS 21.3 GB, all 16 cells. Two columns worth
+keeping, both a direct measure of the two fixes:
+
+| cell | reads recovered by fix 1 | of all multimapping reads | rows entering fix 2's branch |
+|---|---|---|---|
+| 001 ° | 4,468 | 12.9% | 36.8% |
+| 002 | 20,416 | 3.5% | 44.1% |
+| 003 | 35,463 | 3.8% | 43.8% |
+| 004 | 31,012 | 4.5% | 43.2% |
+| 005 | 24,352 | 3.7% | 43.7% |
+| 006 | 39,557 | 4.5% | 44.8% |
+| 007 | 85,610 | 4.9% | 43.9% |
+| 008 | 56,458 | 5.0% | 42.7% |
+| 009 | 61,084 | 4.7% | 44.9% |
+| 010 | 150,565 | 5.3% | 43.8% |
+| 011 | 149,698 | 5.2% | 43.5% |
+| 012 | 109,194 | 4.8% | 43.6% |
+| 013 | 116,676 | 4.8% | 43.1% |
+| 014 ° | 3,666 | 9.0% | 30.0% |
+| 015 ° | 3,606 | 6.8% | 34.8% |
+| 016 ° | 2,711 | 11.0% | 28.4% |
+| **all** | **894,536** | **4.8%** | **43.7%** |
+
+° the four low-count wells.
+
+**Fix 1 recovers 894,536 reads**, 4.8% of every multimapping read in the
+library — the twelve real cells sit in a tight 3.5–5.3%, matching the ~5%
+predicted from cell 011's NH histogram before any of this was run. The blanks
+run higher (6.8–12.9%), as they should: their reads are shorter and land in
+repeats more often, so they multimap harder.
+
+**Read the last column carefully — it is not an error rate.** 43.7% of
+singlemapper rows *enter* the branch containing the `=` bug (i.e. they hang off
+a feature edge); only those on a minus-strand gene actually came out wrong.
+The head-to-head above puts that at 18.7% of cell 001's rows against 36.8%
+entering the branch — a ratio of 0.51, which is just "about half of genes are
+on the minus strand", and a good independent check that the accounting is
+right. Roughly 22% of rows library-wide therefore carried a wrong `jS`, `Strand`
+and `Cov` before the fix, and **none of it reached a count table**, because
+step 6 reads none of those three columns.
+
 ---
 
 ## What was actually changed vs. the published pipeline
@@ -1014,13 +1057,13 @@ no truncation), so the repair was just `gzip -f` over the stale `.gz`
 holds its previous output, an output file existing proves nothing. Compare it
 to the *input's* mtime, or to a count the stage itself reported.
 
-### Next: step 5 → 6 → 7
+### Next: step 6 → 7
 
-Steps 1–4 are done and verified. Steps 6 and 7 need *every* cell finished, so
-run step 5 for all 16 before starting step 6.
+**Steps 1–5 are all done and verified** (`50804554` for step 5). Steps 6 and 7
+run once over every cell, so nothing is blocking them.
 
-**The standing check after any mapping stage** — cheap, and it is the one that
-caught the stale-input run:
+**The standing check after any stage** — cheap, and it is the one that caught
+the stale-input run:
 
 ```bash
 # STAR's input reads must equal step3_report.txt's `kept` column, per cell
@@ -1028,15 +1071,24 @@ grep -H "Number of input reads" $CELLDIR/*_E99_Log.final.txt
 cat $OUTDIR/logs/step3_report.txt
 ```
 
-Do the equivalent after step 5 (row counts per cell BED against the BAM) and
-after step 6 (cells in the pickle == cells on disk). `rm_stale` should make a
-stale read impossible now, but the check costs seconds and does not rely on
-believing that.
+After step 6, do the equivalent: cells in the pickle == cells on disk. Steps 3
+and 5 now enforce their own version of this and `return 1` on failure, but the
+check costs seconds and does not rely on believing that.
 
-Sizing: step 5 has no `# sbatch` line yet — measure it on this run and fill it
-in, the way steps 1–4 now are. Step 6 is the memory-hungry one (upstream's own
-note asks for ~160 GB on a full plate; 16 cells should need far less, but
-measure rather than assume).
+**Two things to get right before launching step 6:**
+
+1. **Cell ids come from the file path.** `countTables_2pickle_cellsSpliced.py`
+   globs a folder and derives the id as `cellfile[:cellfile.index('_cbc')]`, so
+   with `CELLID_FROM=f` the ids come out as `cells/ZHA9292A1_001` — the
+   directory name is baked into every column. `step6_pickle()` therefore `cd`s
+   to `$OUTDIR` and passes the *relative* `cells`; an absolute path would embed
+   the whole thing. **If `cells/` is ever reorganised into per-step
+   subdirectories, this is the moment to do it** — after step 6 the layout is
+   frozen into the tables. `CELLID_FROM=r` takes the id from the read name
+   instead (`001`, no path) and sidesteps it entirely.
+2. **Sizing is unmeasured.** Upstream's note asks ~160 GB for a full 384-cell
+   plate; 16 cells should need far less, but measure rather than assume — and
+   note step 5's own 120 GB request turned out to be 6× what it used.
 
 ### Known-open, not urgent
 

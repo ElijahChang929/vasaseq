@@ -86,11 +86,16 @@ cell_list() {
 # Usage: parallel_over_cells <function-name>
 parallel_over_cells() {
     local fn=$1
-    export -f "$fn" say die
+    # NB rm_stale must be exported too -- the workers run in a fresh `bash -c`,
+    # which inherits neither functions nor unexported variables. Forgetting it
+    # cost a whole step-5 launch on 2026-07-27: every cell died with
+    # "rm_stale: command not found", and ASSIGN_*_SH were empty besides.
+    export -f "$fn" say die rm_stale
     export CELLDIR OUTDIR LOGDIR SAMPLE VASA_SCRIPTS STRANDED REF_BED RRNA_FASTA
     export P2TRIMGALORE P2CUTADAPT P2BWA P2SAMTOOLS P2BEDTOOLS
     export TRIM_SH TRIM_MODE TRIM_ADAPTER3 TRIM_MINLEN TRIM_POLYA TRIM_POLYG TRIM_CUTADAPT
     export TRIM_ANCHOR_BC TRIM_POLYT5 TRIM_ANCHOR_PY TRIM_PYTHON STEP2_REPORT
+    export ASSIGN_SINGLE_SH ASSIGN_MULTI_SH
     cell_list | xargs -P "$NCORES" -I{} bash -c "$fn {}" _
 }
 
@@ -534,10 +539,29 @@ step4_map() {
 
 ###############################################################################
 # step5 -- assign reads to genes
-# Two passes over the same BAM: uniquely-mapping reads (NH:i:1) and
-# multi-mapping reads (NH:i:2-9). Both intersect the annotation BED and write
+# Two passes over the same BAM: uniquely-mapping reads (NH == 1) and
+# multi-mapping reads (NH >= 2). Both intersect the annotation BED and write
 # *_genes.bed.gz. Multimappers are RESCUED, not discarded.
+#
+# NB "NH >= 2", not upstream's /NH:i:[2-9]/ -- that pattern inspects a single
+# character and so missed NH:i:10..19 entirely, which matched the singlemapper
+# pattern no better and were dropped by both scripts. Measured over all 16
+# cells: 894,536 reads recovered, 4.8% of every multimapping read in the
+# library. See own_version/deal_with_singlemappers.sh and README.md, "Step 5".
+#
+# Sizing, MEASURED on the first full run (job 50804554, NCORES=16, 8.9 GB of
+# step-4 BAM): 15m02s elapsed, TotalCPU 2h28m, MaxRSS 21.3 GB. The 120 GB that
+# run asked for was a large over-estimate. bedtools sort holds its input in
+# memory and 16 cells run concurrently, so memory tracks the biggest few cells,
+# not the total.
+#
+# TMPDIR matters here: deal_with_multimappers.sh ends with `sort -k4`, which
+# spills to $TMPDIR on large cells. Left at the default it lands on node-local
+# /tmp; point it at $SCRATCH.
 ###############################################################################
+
+# sbatch -c 16 --mem=32G -t 2:00:00 --wrap "export TMPDIR=$SCRATCH/tmp; pipeline.sh step5"
+
 do_assign() {
     local cell=$1
     local bam="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam"
@@ -558,7 +582,31 @@ step5_assign() {
     say "step5: assigning reads to genes for $(cell_list | wc -l) cells"
     eval "$ML_BED"
     parallel_over_cells do_assign
-    say "step5 done: $(ls ${CELLDIR}/*singlemappers_genes.bed.gz 2>/dev/null | wc -l) single, $(ls ${CELLDIR}/*multimappers_genes.bed.gz 2>/dev/null | wc -l) multi"
+    # Same rule as step3: counting files is not proof. On 2026-07-27 this line
+    # cheerfully said "0 single, 0 multi" and the job still exited 0, because
+    # every worker had died on an unexported variable. Check per cell that both
+    # outputs exist and are NEWER than the BAM they come from, and fail loudly
+    # -- step6 globs *.singlemappers_genes.bed.gz and would otherwise run on
+    # whatever happens to be lying there.
+    local bad5=0
+    for cell in $(cell_list); do
+        local bam="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam"
+        local stem="${CELLDIR}/${cell}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out"
+        local sgl="${stem}.singlemappers_genes.bed.gz"
+        local mlt="${stem}.nsorted.multimappers_genes.bed.gz"
+        for out in "$sgl" "$mlt"; do
+            if [ ! -s "$out" ]; then
+                echo "  BAD step5: $cell -- missing $(basename "$out")"; bad5=$((bad5+1))
+            elif [ "$out" -ot "$bam" ]; then
+                echo "  BAD step5: $cell -- $(basename "$out") is OLDER than its BAM"; bad5=$((bad5+1))
+            fi
+        done
+    done
+    if [ "$bad5" -gt 0 ]; then
+        say "step5 FAILED: $bad5 missing/stale outputs -- do NOT run step6"
+        return 1
+    fi
+    say "step5 done: $(ls ${CELLDIR}/*singlemappers_genes.bed.gz 2>/dev/null | wc -l) single, $(ls ${CELLDIR}/*multimappers_genes.bed.gz 2>/dev/null | wc -l) multi (all newer than their BAMs)"
 }
 
 ###############################################################################

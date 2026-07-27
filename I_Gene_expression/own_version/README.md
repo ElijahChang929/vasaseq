@@ -655,55 +655,56 @@ only in unprocessed pre-rRNA, and a total-RNA protocol is supposed to see them.
 But check *where* in the 5'ETS the reads land before believing it — see the
 poly-T leak below.
 
-### Results, ZHA9292A1 (job 50787728, 2026-07-26)
+### Results, ZHA9292A1 (job 50788552, 2026-07-27 — post poly-T fix)
 
-91 278 186 reads in, **19 651 779 ribosomal (21.53%)**, 71 626 391 kept. Full
+90 137 383 reads in, **19 282 729 ribosomal (21.39%)**, 70 854 638 kept. Full
 tables in `logs/step3_report.txt`; this is the summary.
 
 | cell | in | ribo | ribo% | | cell | in | ribo | ribo% |
 |---|---|---|---|---|---|---|---|---|
-| 001 ° | 310 187 | 37 672 | 12.14% | | 009 | 7 118 197 | 1 490 858 | 20.94% |
-| 002 | 2 663 188 | 485 404 | 18.23% | | 010 | 13 403 380 | 2 897 407 | 21.62% |
-| 003 | 4 620 209 | 1 163 921 | 25.19% | | 011 | 13 745 250 | 3 102 999 | 22.58% |
-| 004 | 3 630 162 | 760 008 | 20.94% | | 012 | 11 198 983 | 2 522 288 | 22.52% |
-| 005 | 3 101 023 | 648 321 | 20.91% | | 013 | 10 525 798 | 2 314 347 | 21.99% |
-| 006 | 4 834 005 | 943 141 | 19.51% | | 014 ° | 374 512 | 32 656 | 8.72% |
-| 007 | 9 260 723 | 2 040 952 | 22.04% | | 015 ° | 433 438 | 46 298 | 10.68% |
-| 008 | 5 836 399 | 1 140 364 | 19.54% | | 016 ° | 222 732 | 25 143 | 11.29% |
+| 001 ° | 284 597 | 29 868 | 10.49% | | 009 | 7 017 728 | 1 458 166 | 20.78% |
+| 002 | 2 623 273 | 471 928 | 17.99% | | 010 | 13 279 354 | 2 855 786 | 21.51% |
+| 003 | 4 565 233 | 1 145 347 | 25.09% | | 011 | 13 634 453 | 3 066 372 | 22.49% |
+| 004 | 3 542 790 | 732 589 | 20.68% | | 012 | 11 082 329 | 2 487 380 | 22.44% |
+| 005 | 3 045 052 | 629 745 | 20.68% | | 013 | 10 454 276 | 2 291 476 | 21.92% |
+| 006 | 4 748 979 | 915 911 | 19.29% | | 014 ° | 335 982 | 19 683 | 5.86% |
+| 007 | 9 192 416 | 2 019 038 | 21.96% | | 015 ° | 393 457 | 33 811 | 8.59% |
+| 008 | 5 756 671 | 1 114 134 | 19.35% | | 016 ° | 180 793 | 11 495 | 6.36% |
 
 ° the four low-count wells.
 
-The twelve real cells sit in a tight **18.2–25.2%** band, which is the reassuring
+The twelve real cells sit in a tight **18.0–25.1%** band, which is the reassuring
 part — a per-cell rRNA fraction that varied wildly would mean the reference or
 the barcodes were wrong. Composition is equally consistent across them: 28S
-50–55%, 5'ETS 17–20%, mito 1.8–3.4%.
+51.7–55.5%, 5'ETS 15.2–17.8%, mito 1.8–3.4%.
 
-### The four blanks look different, and it is a poly-T artefact — not biology
+### The blanks used to look different, and it was a poly-T artefact — now fixed
 
-The low-count wells report a *lower* ribo% but a wildly different composition:
-5'ETS 31–62% against the real cells' 17–20%. That is not extra pre-rRNA.
-Binning the 5'ETS hits by position:
+**This is resolved; the section is kept because the diagnosis is the useful
+part.** Before the fix, the low-count wells reported a *lower* ribo% but a
+wildly different composition: 5'ETS **31–62%** against the real cells' 17–20%.
+That was not extra pre-rRNA. Binning the 5'ETS hits by position:
 
 - cell 016 (blank): **88.9% of them in one 200 nt window** (400–599)
 - cell 011 (real): spread across the whole 4 kb, busiest bin only 10.5%
 
-The reads in that window are **pure poly-T**, aligning to a T-rich stretch at
-~414–424. Poly-T as a share of each cell's ribo calls:
+The reads in that window were **pure poly-T**, aligning to a T-rich stretch at
+~414–424. Poly-T as a share of each cell's ribo calls, before the fix:
 
 | | 016 | 014 | 015 | 001 | | 011 | 007 |
 |---|---|---|---|---|---|---|---|
 | ≥90% T | **52.0%** | 38.2% | 25.8% | 19.6% | | 1.1% | 1.0% |
 
-Absolute counts are similar everywhere (7k–34k per cell), i.e. a constant
-background that only *looks* large in a near-empty well.
+Absolute counts were similar everywhere (7k–34k per cell), i.e. a constant
+background that only *looked* large in a near-empty well.
 
-**Root cause is in step 2, not step 3.** `-g "polyT5=T{20}"` is a fixed 20-mer,
+**Root cause was in step 2, not step 3.** `-g "polyT5=T{20}"` is a fixed 20-mer,
 not a variable-length run, and `-n 3` caps cutadapt at three passes — so at most
-**3 × 20 = 60 nt** of poly-T can ever be removed. Verified on synthetic pure-T
+**3 × 20 = 60 nt** of poly-T could ever be removed. Verified on synthetic pure-T
 reads: ≤70 nt are consumed and dropped, 100 nt leaves 40, 130 nt leaves 70. The
-longest poly-T surviving in the real data is **exactly 70 nt** = 130 − 60, and
+longest poly-T surviving in the real data was **exactly 70 nt** = 130 − 60, and
 130 nt is this library's biological read length. 14.28% of cell 016's trimmed
-reads are ≥90% T; poly-A is 0.00%, as it should be.
+reads were ≥90% T; poly-A was 0.00%, as it should be.
 
 **Fix, measured against 2 000 real reads from cell 011:**
 
@@ -714,16 +715,23 @@ reads are ≥90% T; poly-A is 0.00%, as it should be.
 | `T{130}`, `-n 3` | 0 | 1 997 | 198 523 (12 bp over-trimmed) |
 
 `-n 10` removes all of it and touches nothing else, so that is what `trim.sh`
-now uses (commit `5c6d879`). Steps 2–4 were resubmitted on 2026-07-26 to pick
-it up — see "Where this stands" at the end of this file.
+now uses (commit `5c6d879`).
 
-⚠️ **The step-3 numbers above are from the run BEFORE this fix** (job 50787728).
-The twelve real cells will barely move — poly-T was ~1% of their ribo calls —
-but the four blanks will drop and their composition should stop being
-5'ETS-dominated. Regenerate the tables from the new run
-(`step3_report.py $CELLDIR`) before quoting any of this, and replace this
-section's tables when you do. **If the blanks still show a 5'ETS spike after the
-rerun, the diagnosis above is wrong and needs revisiting.**
+**Confirmed on the rerun** (job 50788552, the table above). The prediction was
+that the real cells would barely move and the blanks' 5'ETS share would stop
+dominating, and that is what happened:
+
+| | before (50787728) | after (50788552) |
+|---|---|---|
+| blanks' ribo% | 8.7–12.1% | **5.9–10.5%** |
+| blanks' 5'ETS share | **31–62%** | **13.5–20.8%** |
+| real cells' 5'ETS share | 17–20% | 15.2–17.8% |
+| whole-library ribo% | 21.53% | 21.39% |
+
+The blanks now sit inside the real cells' 5'ETS band. Cell 001's aligner split
+corroborates the mechanism independently: aln-only detection falls 18 478 →
+10 682, because the reads that disappeared were exactly the short poly-T
+population that only `bwa aln` could see.
 
 ---
 
@@ -758,49 +766,131 @@ rerun, the diagnosis above is wrong and needs revisiting.**
    specificity. See "Step 3" above. The two upstream scripts it feeds
    (`ribo-bwamem.sh`, `riboread-selection.py`) are unchanged — except for a
    pre-existing path bug in the former, fixed earlier (`${fq##*/}`, not
-   `${fq#*/}`, which broke any absolute path).
+   `${fq#*/}`, which broke any absolute path). `riboread-selection.py`'s bare
+   `gzip` is a real re-run hazard but is **deliberately left alone**; it is
+   handled from this side instead. See "Counting files is not proof" below.
 6. **`step2_report.py` / `step3_report.py`** — per-cell tables generated by the
    run itself, so no number in this README has to be reconstructed by hand.
 7. Everything else is the published pipeline, called unchanged.
 
 ---
 
-## Where this stands (2026-07-26, end of day)
+## Where this stands (2026-07-27)
 
-Steps 1–3 have all run to completion at least once. Steps 2–4 were then
-**resubmitted as a dependency chain** to pick up the poly-T fix, and were still
-queued/running when this was written:
+The 2026-07-26 chain (`50788551` step2 → `50788552` step3 → `50788553` step4)
+**all reported COMPLETED, exit 0:0.** Steps 2 and 3 are good and their numbers
+are in this README. **Step 4 was not** — see below — and was rerun.
 
-| job | step | resources | depends on |
-|---|---|---|---|
-| `50788551` | step2 trim | `-c 18 --mem=8G -t 8:00:00` | — |
-| `50788552` | step3 ribo | `-c 16 --mem=24G -t 1:00:00` | `afterok:50788551` |
-| `50788553` | step4 map | `-c 16 --mem=64G -N 1 -t 6:00:00` | `afterok:50788552` |
+| job | step | result |
+|---|---|---|
+| `50788551` | step2 trim | ✅ 21m38s, 193.99 M in → 90.14 M kept (46.5%) |
+| `50788552` | step3 ribo | ✅ 21m46s, 21.39% ribosomal, poly-T fix confirmed |
+| `50788553` | step4 map | ❌ **mapped stale input** — superseded |
+| `50803001` | gzip repair | ✅ 4m47s, recompressed step 3's real output over the stale `.gz` |
+| `50803002` | step4 map | ✅ 10m08s, MaxRSS 29.0 GB — **verified correct input** |
 
-`afterok`, so a failure anywhere stops the rest rather than feeding garbage
-forward. **Step 4 has never run before** — this is its first execution, so treat
-its output as unvalidated. It holds the 27 GB STAR index in shared memory for
-the whole step, which is why it asks for 64 GB and `-N 1`.
+Step 4 is now good: for **all 16 cells** STAR's `Number of input reads` equals
+`step3_report.txt`'s `kept` column exactly. Real cells map 54.6–62.5% uniquely
+with 24.7–30.9% multi-mapping; the four blanks map 17.1–23.0% uniquely with
+56.8–64.1% "too short", which is what a blank should look like.
 
-### First thing to check next session
+`# sbatch -c 16 --mem=64G -N 1 -t 6:00:00 pipeline.sh step4` — measured on
+`50803002`: 10m08s elapsed, MaxRSS 29.0 GB. Do **not** cut the request toward
+30 GB on that number: MaxRSS does not fully account for the shared-memory
+genome segment, which is charged to the cgroup.
+
+### Counting files is not proof — the step-4 staleness incident
+
+Step 4 read the **previous** run's `.nonRibo.fastq.gz`, not `50788552`'s. It was
+caught by comparing STAR's `Number of input reads` against `step3_report.txt`:
+
+| cell 001 | reads |
+|---|---|
+| new step-3 kept (`50788552`) | 254 728 |
+| old step-3 kept (`50787728`) | 272 515 |
+| **STAR input reads** | **272 514** ← the old run, minus the known 1-read flush |
+
+All 16 `.nonRibo.fastq.gz` were timestamped 20:52–21:06 (the *old* run), while
+step 3 ran 23:48–00:09 and left its real output sitting **uncompressed** as
+`.nonRibo.fastq`, 21 GB of it.
+
+**Cause:** `riboread-selection.py` ended with
+`os.system('gzip '+output+'.nonRibo.fastq')`. Without `-f`, gzip refuses to
+replace an existing `.gz` and exits 2; the return value was never checked, and
+`do_ribo` sends the whole stage's stderr to `/dev/null`. Nothing appeared in any
+log, `pipeline.sh status` said 16/16, and step 3's own "done: 16 nonRibo files"
+line said 16 — because all three **counted files rather than checking
+freshness**. That is the convention's "confirm a stage has really finished"
+rule failing one layer deeper than it is usually stated: the job *had* finished,
+and its output was still stale.
+
+**This is a re-run hazard, not an error in the published analysis.** In the
+upstream workflow every stage runs once into a clean directory, where `gzip` and
+`gzip -f` are identical and nothing is affected. It only bites when a stage is
+re-run over its own previous output — which `own_version` does constantly and
+upstream did not. So the published numbers are not in question; the published
+scripts are simply not re-run-safe.
+
+That is why **`a_Mapping/` was left untouched**, per this repo's rule that
+published scripts get comments and not logic changes. `riboread-selection.py`,
+`concatenator.py`, `deal_with_*mappers.sh` and
+`countTables_2pickle_cellsSpliced.py` all carry the same bare `gzip`; all four
+stages are protected from this side instead, in `pipeline.sh`:
+
+1. **Detection** — `step3_ribo()` no longer counts files. It checks, per cell,
+   that the `.nonRibo.fastq.gz` is **newer than its trimmed input** and that no
+   uncompressed `.nonRibo.fastq` was left beside it, and `return 1`s so an
+   `afterok` chain stops instead of feeding step 4.
+2. **Prevention** — `rm_stale` deletes a step's own previous outputs before it
+   runs, so the bare `gzip` never meets an existing `.gz`. Wired into all four
+   affected stages: step 1 (`concatenator.py`), step 3 (`riboread-selection.py`),
+   step 5 (`deal_with_{single,multi}mappers.sh`) and step 6
+   (`countTables_2pickle_cellsSpliced.py`). It removes **per cell**, not by
+   wiping the directory, so `MAXCELLS` runs and partial failures only touch the
+   cells actually being processed.
+
+   Step 5 is the case that mattered most: step 6 *globs*
+   `*.singlemappers_genes.bed.gz`, so a stale BED there would have been folded
+   into the count tables with nothing to show for it.
+
+   Verified against the real failure mode, not asserted: with a stand-in for the
+   upstream scripts (write data, then bare `gzip`), a second run leaves the
+   *first* run's data in the `.gz` and the second run's uncompressed beside it —
+   reproducing the bug exactly — while the same sequence with `rm_stale` in
+   front yields the new data and no leftover.
+
+Step 3 did not have to be recomputed: all 16 uncompressed `.nonRibo.fastq`
+files were verified complete (read counts matched `step3_report.txt` exactly,
+no truncation), so the repair was just `gzip -f` over the stale `.gz`
+(job `50803001`), followed by the step-4 rerun.
+
+**Generalise it:** whenever a stage is re-run over a directory that already
+holds its previous output, an output file existing proves nothing. Compare it
+to the *input's* mtime, or to a count the stage itself reported.
+
+### Next: step 5 → 6 → 7
+
+Steps 1–4 are done and verified. Steps 6 and 7 need *every* cell finished, so
+run step 5 for all 16 before starting step 6.
+
+**The standing check after any mapping stage** — cheap, and it is the one that
+caught the stale-input run:
 
 ```bash
-squeue -u $USER                     # anything still running?
-sacct -j 50788551,50788552,50788553 --format=JobID,JobName,State,Elapsed,MaxRSS
-./pipeline.sh status                # file counts per stage
-cat $OUTDIR/logs/step3_report.txt   # regenerated rRNA tables
+# STAR's input reads must equal step3_report.txt's `kept` column, per cell
+grep -H "Number of input reads" $CELLDIR/*_E99_Log.final.txt
+cat $OUTDIR/logs/step3_report.txt
 ```
 
-Then, in order:
+Do the equivalent after step 5 (row counts per cell BED against the BAM) and
+after step 6 (cells in the pickle == cells on disk). `rm_stale` should make a
+stale read impossible now, but the check costs seconds and does not rely on
+believing that.
 
-1. **Confirm the poly-T fix worked.** Blanks' ribo% should fall and their 5'ETS
-   share should stop dominating. If it has not, the diagnosis in "Step 3" is
-   wrong — say so and re-derive it rather than patching over it.
-2. **Replace the tables in "Step 3"** with the new run's numbers, and drop the
-   ⚠️ warning there.
-3. **Size step4 from measurement** and fill in its `# sbatch` line, the way
-   steps 1–3 already are. It currently has none.
-4. Then step5 → step6 → step7. Steps 6 and 7 need *every* cell finished.
+Sizing: step 5 has no `# sbatch` line yet — measure it on this run and fill it
+in, the way steps 1–4 now are. Step 6 is the memory-hungry one (upstream's own
+note asks for ~160 GB on a full plate; 16 cells should need far less, but
+measure rather than assume).
 
 ### Known-open, not urgent
 

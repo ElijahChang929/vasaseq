@@ -638,15 +638,17 @@ p
 
 ```{r pca-note, echo=FALSE, results="asis"}
 cat(if (have_scplotter)
-  "Drawn with `scplotter::CellDimPlot`.\n" else
-  paste0("**`scplotter` is not installed here, so this panel fell back to ",
-         "`plotthis::DimPlot` — the same coordinates and the same engine.** ",
-         "The blocker is documented in `install_r_deps.sh`: scplotter `Imports` ",
-         "`scRepertoire`, a TCR/BCR repertoire package this analysis has no use ",
-         "for, and installing it fails twice over — R's conda `libcurl` cannot ",
-         "reach Bioconductor's archive hosts (system `curl` can), and the `gsl` ",
-         "R package needs a C library that is not installed system-wide. ",
-         "Nothing else in this document depends on it.\n"))
+  sprintf(paste0("Drawn with `scplotter::CellDimPlot` (scplotter %s, ",
+                 "scRepertoire %s).\n"),
+          packageVersion("scplotter"), packageVersion("scRepertoire")) else
+  paste0("**`scplotter` is not available in this session, so this panel fell ",
+         "back to `plotthis::DimPlot` — the same coordinates, and plotthis is ",
+         "scplotter's own engine, so the figure is the same figure.** Run ",
+         "`bash code/flashseq/install_r_deps.sh`; it installs scplotter and ",
+         "documents the four separate things that have to be got right first ",
+         "(a curl shim for Bioconductor, a pinned `gsl`, `scRepertoire` >= 2 ",
+         "from GitHub, and verification in a fresh R session). Nothing else in ",
+         "this document depends on it.\n"))
 ```
 
 ## Session

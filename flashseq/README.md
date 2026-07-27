@@ -389,7 +389,8 @@ with.
 
 ```bash
 source code/flashseq/config.sh
-bash code/flashseq/install_r_deps.sh     # once; ~10 min
+bash code/flashseq/install_r_deps.sh     # once; ~20 min. Idempotent, and it
+                                         # fails loudly rather than silently.
 fs_Rscript -e 'rmarkdown::render("code/flashseq/flashseq_qc.Rmd",
     output_file = "flashseq_qc_R.html", output_dir = "res/flashseq")'
 ```
@@ -412,16 +413,37 @@ single-cell, spatial or repertoire **object**, and every table here is a bulk
 per-library summary of ten rows. There is no cell dimension for them to plot.
 
 Section 9 is the one place where scplotter's API genuinely fits — the ten libraries
-as ten "cells" — and it is written to use `scplotter::CellDimPlot` when available.
-**It currently falls back to `plotthis::DimPlot`,** same coordinates, same engine,
-because scplotter cannot be installed on this host: it `Imports` `scRepertoire`, a
-TCR/BCR package irrelevant to this analysis, and that fails twice over — R's conda
-`libcurl` cannot reach Bioconductor's archive hosts (system `curl` can, so it is a
-CA/redirect problem in the env, not a firewall), and the `gsl` R package needs a C
-library absent system-wide (`GSL/2.7-GCC-11.2.0` exists as a module but is not
-wired in). `install_r_deps.sh` records all of this and fails loudly rather than
-silently: it ends by `library()`-ing every package, because `install.packages()`
-only warns when an install fails.
+as ten "cells" — and it uses `scplotter::CellDimPlot` (0.7.6, installed and
+working). It keeps a `plotthis::DimPlot` fallback on the same coordinates so the
+document still renders on a host without it.
+
+**Installing scplotter took four attempts, and each failure hid the next.** The
+sequence is recorded in `install_r_deps.sh` because none of it is guessable:
+
+1. **The env's own `curl` cannot reach Bioconductor.** `envs/r4.3/bin/curl` (8.18.0,
+   conda build) shadows `/usr/bin/curl` after activation, and `bioconductor.org`
+   302-redirects `/packages/3.18/…` to an Open Storage Network bucket that the
+   conda build times out on after 300 s while the system one fetches in 5 s. R
+   inherits it twice — its linked libcurl is the same build, and
+   `download.file(method="curl")` finds the conda binary on `PATH`. Measured:
+   `available.packages()` on Bioconductor 3.18 returns **0** packages as shipped
+   and **2216** behind a one-symlink `/usr/bin/curl` shim.
+2. **`gsl` 2.1-9 on CRAN declares `R (>= 4.5.0)`** and this env is R 4.3.3, so it is
+   refused — and the refusal surfaces four levels away as "lazy loading failed for
+   powerTCR". Pinned to **2.1-8**, the last version without that floor, built from
+   source against the GSL C library already inside the env (`gsl-config` 2.7).
+3. **Bioconductor 3.18 ships `scRepertoire` 1.12.0**, but scplotter 0.7.6 needs 2.x —
+   the v1→v2 rewrite renamed the API, so it fails at byte-compile with "object
+   `clonalAbundance` is not exported". The script checks the *version*, not the
+   presence, and takes 2.2.1 from GitHub.
+4. **The verification has to run in a fresh R session.** The installing session
+   calls `requireNamespace("scRepertoire")` for that version check, which loads
+   1.12.0's namespace and keeps it — so scplotter byte-compiles against the stale
+   one and reports the same error even with 2.2.1 on disk.
+
+The script ends by `library()`-ing every package **in a separate process**, because
+`install.packages()` only *warns* when an install fails: the first run of this
+script reported success while installing nothing.
 
 **What the R report adds.** The PCA in section 9 is new, and it corroborates the A8
 exclusion by a route that knows nothing about CALB1: A1–A6 cluster tightly, **A8 is

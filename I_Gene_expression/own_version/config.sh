@@ -166,7 +166,14 @@ TRIM_ANCHOR_BC="${TRIM_ANCHOR_BC:-yes}"
 # Where cell IDs in the final count table come from:
 #   f = from the filename  (ids look like "cells/MYSAMPLE_001")
 #   r = from the read name (ids look like "001" -- cleaner for a single sample)
-CELLID_FROM="${CELLID_FROM:-f}"
+#
+# Set to r on 2026-07-27, before step 6 was first run over all 16 cells. Under
+# f the id is cellfile[:cellfile.index('_cbc')], so the CELLDIR directory name
+# ends up inside every column of every count table and the layout is frozen
+# once step 6 has run. r reads the id from the SM: tag concatenator.py wrote
+# onto the read name -- verified present in the step 5 BEDs, e.g. cell 007's
+# first row carries "...;CB:CATGAG;QT:jjjjjj;RX:CAGTCC;RQ:jjjjjj;SM:007".
+CELLID_FROM="${CELLID_FROM:-r}"
 
 # =============================================================================
 # EDIT ME -- references (these must already exist; the pipeline does NOT build them)
@@ -228,7 +235,35 @@ STAR_INDEX="${STAR_INDEX:-/nemo/lab/turnerj/working/guangxin/reference/genomes/m
 RRNA_FASTA="${RRNA_FASTA:-${VASA_REF}/unique_rRNA_mouse.v2.fa}"
 
 # Intron/exon/tRNA BED with biotype embedded in the gene name.
-REF_BED="${REF_BED:-${VASA_REF}/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.bed}"
+#
+# Switched v1 -> v2 on 2026-07-27. Read only by STEP 5; steps 1-4 do not touch
+# it, so changing it means re-running step5 -> step6 -> step7 and nothing else.
+#
+# v2 is built by build_annotation_bed.sh + gtf2bed_vasa.py FROM PRIMARY SOURCES
+# (Ensembl 116 GTF + GtRNAdb Mmusc39), not by patching v1, and the builder
+# proves itself: run at --coord asis with no tRNA it reproduces all 718,272 of
+# v1's rows exactly. v1 had no build script at all, which is what made that
+# reproduction test necessary rather than merely nice.
+#
+# Three differences from v1, all deliberate:
+#
+#   1. 1137 cytoplasmic tRNA loci are present. v1 had NONE despite its
+#      filename -- Ensembl's GTF carries only 22 Mt_tRNA -- so every
+#      *_tRNA.*Counts.tsv step 7 wrote was empty.
+#   2. Coordinates are true 0-based half-open. v1 copied 1-based GTF numbers
+#      into a BED, so every feature started 1 bp too high. That matters because
+#      step 6 keeps non-splicing biotypes ONLY when jS==IN, so a read covering
+#      a whole short feature was dropped. MEASURED on real cell 002 over
+#      1,187,385 single-mapper reads: 52,464 kept under v1 vs 56,799 under v2,
+#      = +4,335 reads, +8.3% relative, in one cell.
+#   3. 48 rows that were zero-length in v1 (1 bp GTF features, so bedtools
+#      could never match them) become correct 1 bp intervals.
+#
+# TABLES BUILT AGAINST v1 AND v2 CANNOT BE MIXED. Beyond tRNA, the coordinate
+# fix moves reads on every short feature, and tRNA outranks protein-coding in
+# gene_assignment, so non-tRNA counts change too. v1 is kept beside it as
+# ...IntronExonTrna.bed; set REF_BED back to it to reproduce v1-era numbers.
+REF_BED="${REF_BED:-${VASA_REF}/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed}"
 
 # =============================================================================
 # EDIT ME -- how much machine to use

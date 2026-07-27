@@ -842,33 +842,46 @@ for `Cov` or `Strand` as a QC column would be misled. Reads tagged `jS:IN` or
 
 ### Verified head-to-head on real data
 
-Both versions run against cell 001's step-4 BAM (job `50803918`), upstream vs
-fork, same reference, same arguments:
+Upstream vs fork on the same step-4 BAM, same reference, same arguments.
+**Use cell 011 for the rates** — it is a real cell. Cell 001 was run first
+simply because it is the smallest, but it is one of the four blanks and every
+rate it gives is atypical; it is kept below only as the second data point.
 
-**singlemappers — 50,752 rows both ways, and every column step 6 reads is
-byte-identical.** The `nh==1` test is therefore exactly equivalent to the old
-`NH:i:1\tHI:i:1\t` text match, as expected: fix 1 only ever concerned
-multimappers. Differences are confined to the three dead columns, on 18.7% of
-rows — those are the reads hanging off a feature edge on a minus-strand gene:
+**singlemappers — identical row counts, and every column step 6 reads is
+byte-identical**, on both cells. The `nh==1` test is therefore exactly
+equivalent to the old `NH:i:1\tHI:i:1\t` text match, as expected: fix 1 only
+ever concerned multimappers. All differences are confined to the three dead
+columns:
 
-| column | rows differing |
-|---|---|
-| 5 `Strand` | 9,504 (18.7%) |
-| 7 `Info` (the `jS:` part only) | 9,504 (18.7%) |
-| 9 `Cov` | 9,500 (18.7%) |
+| | cell 011 (real) | cell 001 (blank) |
+|---|---|---|
+| rows, upstream / fork | 7,845,427 / 7,845,427 | 50,752 / 50,752 |
+| columns step 6 reads | byte-identical | byte-identical |
+| rows *entering* the `=` branch | 3,415,604 (43.5%) | 18,654 (36.8%) |
+| rows actually differing (`Strand`, `Info`) | 1,717,069 (21.9%) | 9,504 (18.7%) |
+| rows actually differing (`Cov`) | 1,716,993 (21.9%) | 9,500 (18.7%) |
+| **differing / entering** | **0.503** | **0.51** |
 
-**multimappers — 30,153 → 34,550 reads (+4,397), 83,658 → 110,290 rows
-(+31.8%), and no read lost.** Every one of the 4,397 recovered reads has an
-`NH` between 10 and 19 in the BAM — nothing outside that range appeared, which
-is the point:
+That last ratio is the useful one: about half of the rows that reach the buggy
+branch actually come out wrong, because about half of genes are on the minus
+strand. Two independent cells landing on 0.50 is a good check that the
+accounting is right.
+
+**multimappers, cell 001 — 30,153 → 34,550 reads (+4,397), 83,658 → 110,290
+rows (+31.8%), no read lost.** Every one of the 4,397 recovered reads has an
+`NH` between 10 and 19 in the BAM; nothing outside that range appeared, which
+is the whole point:
 
 | NH | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | reads | 481 | 345 | 330 | 340 | 1583 | 492 | 319 | 173 | 119 | 215 |
 
+For cell 011 the equivalent recovery is 149,698 reads, 5.2% of its multimapping
+reads — see the full-library table below.
+
 Reproduce with `$SCRATCH/step5cmp/cmp_step5.sh` (it copies the BAM into two
 directories and runs each version in its own, since both write their outputs
-next to the input).
+next to the input). Cell 011 takes ~20 min at 9.1 GB.
 
 ### Results, ZHA9292A1 (job 50804554, 2026-07-27)
 
@@ -905,13 +918,12 @@ repeats more often, so they multimap harder.
 
 **Read the last column carefully — it is not an error rate.** 43.7% of
 singlemapper rows *enter* the branch containing the `=` bug (i.e. they hang off
-a feature edge); only those on a minus-strand gene actually came out wrong.
-The head-to-head above puts that at 18.7% of cell 001's rows against 36.8%
-entering the branch — a ratio of 0.51, which is just "about half of genes are
-on the minus strand", and a good independent check that the accounting is
-right. Roughly 22% of rows library-wide therefore carried a wrong `jS`, `Strand`
-and `Cov` before the fix, and **none of it reached a count table**, because
-step 6 reads none of those three columns.
+a feature edge); only those on a minus-strand gene actually came out wrong. The
+head-to-head above measures that ratio at 0.503 on cell 011 (21.9% differing
+against 43.5% entering) — just "about half of genes are on the minus strand".
+So roughly **22% of rows library-wide** carried a wrong `jS`, `Strand` and
+`Cov` before the fix, and **none of it reached a count table**, because step 6
+reads none of those three columns.
 
 ---
 
@@ -1057,10 +1069,249 @@ no truncation), so the repair was just `gzip -f` over the stale `.gz`
 holds its previous output, an output file existing proves nothing. Compare it
 to the *input's* mtime, or to a count the stage itself reported.
 
-### Next: step 6 → 7
+### Step 6 launched over all 16 cells — job `50811720` (2026-07-27 13:39)
 
-**Steps 1–5 are all done and verified** (`50804554` for step 5). Steps 6 and 7
-run once over every cell, so nothing is blocking them.
+`sbatch -J vasa_s6 -c 8 --mem=200G -t 8:00:00 ... ./pipeline.sh step6`, running
+on `cn053`. Expect **~3 h** (pinned by cell 011). Output:
+`$OUTDIR/ZHA9292A1.pickle.gz` + `ZHA9292A1dict.pickle`.
+
+Launched after the two single-cell trials below were checked for *content*, not
+just exit status, and after step 7 was proved to run to completion on one of
+them. What that check found, and the two decisions it forced, are recorded here.
+
+**`CELLID_FROM` was switched `f` → `r`** in `config.sh` immediately before the
+launch. Under `f` the tables' column names come out as `cells/ZHA9292A1_002`
+(that is what the trials produced); under `r` they are `001`…`016`, read from
+the `SM:` tag `concatenator.py` writes onto the read name — verified present in
+the step 5 BEDs before switching. This freezes into the tables at step 6, which
+is why it had to be settled first.
+
+**The memory request was raised 128G → 200G.** Reasoning in the comment block
+above `step6_pickle()` in `pipeline.sh`; the short form is that ~106 GB is an
+extrapolation from two points and the parent's `gcnt` accumulation sits on top
+of it, so 15% headroom was too thin to risk 3 hours on.
+
+#### What the step-6 trial output actually contains
+
+Both trials exited 0 (`50806890` cell 002, `50806891` cell 007). Loading the
+pickles back:
+
+| | cell 002 | cell 007 |
+|---|---|---|
+| gene entries | 37 963 | 71 268 |
+| UMIs (molecules) | 540 689 | 1 669 127 |
+| exon / intron | 71.5% / 28.5% | 69.8% / 30.2% |
+| combination genes (`-`-joined) | 14 778 (39%) | 38 628 (54%) |
+
+The exon/intron split is the thing to look at: ~30% intronic is what VASA
+should give on total RNA, and it is what makes the spliced/unspliced tables
+meaningful. Step 7 was then run end-to-end on the cell 007 pickle
+(`/nemo/lab/turnerj/scratch/zhangg/vasaseq/step7test/`) and produced the full
+table set, exit 0. Cross-check: 5 470 788 reads assigned to genes against
+STAR's 6 320 125 mapped for that cell — 86.6% assigned, the remainder
+intergenic, which is the expected shape.
+
+`applymap` throws `FutureWarning` under this env's pandas 2.3 (deprecated in
+2.1). Cosmetic — it still works — but it will *break* on pandas 3.0, so pin the
+env or switch to `.map` before upgrading.
+
+#### The 6 nt UMI saturates, and step 7 corrects it — up to a ceiling
+
+`LEN_UMI=6` → only **4096** distinct UMIs exist per gene. Measured on the
+trials, this is not hypothetical:
+
+| | cell 002 | cell 007 |
+|---|---|---|
+| genes >1000 UMIs (>24% of UMI space) | 29 | 139 |
+| genes >2048 UMIs (>50%) | 15 | 40 |
+| genes **exceeding 4096** | 1 | 3 |
+| share of all molecules in genes >1000 | 11.1% | 15.4% |
+
+(A gene can pass 4096 only because UMIs containing `N` count as distinct —
+3107 such observations in 002, 11 546 in 007, ~0.6% either way.)
+
+`countTables_fromPickle.py` applies the standard collision correction,
+`t = ln(1 − x/K) / ln(1 − 1/K)` with `K = 4**len(umi)` = 4096 — this is what
+the `*.TranscriptCounts.tsv` tables are, and **they are the ones to use for any
+highly-expressed gene**; `UFICounts` are the raw saturated counts. But the
+correction is only as good as its input: at `x ≥ K` it clamps to a constant
+(~62 000 transcripts), so the handful of hard-saturated genes carry a
+meaningless ceiling value rather than an estimate. Those genes are almost all
+snoRNA / snRNA / MiscRna multimapper combinations, not the protein-coding genes
+most analyses care about — but do not read their absolute values.
+
+This is protocol-inherent (CEL-seq2/VASA uses a 6 nt UMI), not a defect in this
+fork, and the published pipeline behaves identically.
+
+#### The annotation BED has no cytoplasmic tRNA, despite its name
+
+`Mus_musculus.GRCm39.116.homemade_IntronExonTrna.bed` contains **no tRNA
+biotype**. Counting the biotype field over all rows gives ProteinCoding,
+lncRNA, pseudogenes, miRNA, snoRNA, snRNA, rRNA, scaRNA, ribozyme … and
+`MtTrna` (22 rows, the mitochondrial tRNAs) — nothing else. The only other
+`tRNA` string matches are 41 rows of *Trnau1ap*, a protein-coding gene whose
+symbol merely contains "Trna". So every `*_tRNA.*Counts.tsv` step 7 writes is
+**empty**, confirmed on the trial (`Total reads assigned to tRNA: 0`).
+
+Two consequences, both minor but neither obvious from the output:
+
+1. The paper's BED did include tRNA — that is what the `Trna` in the filename
+   promises. This BED is one of the reference files with **no build script**
+   (see "Known-open"), so there is no record of why it was left out.
+2. The 22 mito tRNAs that *are* present never reach the tRNA table either, for
+   a separate reason: step 7 selects them with `if 'tRNA' in idx`, which is
+   case-sensitive and does not match `MtTrna`. They are silently folded into
+   the ordinary gene tables instead — verified, 20 of them appear in
+   `t7_total.UFICounts.tsv` at 1–16 UFIs each.
+
+Counts are tiny, so nothing downstream is at risk. **Do not "fix" the case in
+`a_Mapping/`** — that is a published script and this repo's rule is comments
+only there.
+
+#### `build_annotation_bed.sh` — v2 of the BED, built but NOT yet in use
+
+Written and run 2026-07-27. Output
+`$VASA_REF/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed`
+(718 272 gene rows + **1137** tRNA rows), provenance alongside it as
+`...v2.provenance.txt`. **`config.sh` still points at the v1 BED** — nothing has
+changed behaviour yet. v1 is read-only and byte-identical afterwards
+(md5 `04e0369c…`, recorded).
+
+**It builds from primary sources — the Ensembl GTF and GtRNAdb — not from v1.**
+That closes the standing "the annotation BED has no build script" defect: v1
+could not be regenerated at all, and a first attempt at this only patched v1 in
+place, so losing v1 would have taken v2 with it. Conversion rules live in
+`gtf2bed_vasa.py`; the shell script handles download, validation, merge and
+provenance.
+
+**The builder is proven, not asserted.** `VALIDATE=yes` (default) re-runs it in
+v1's exact configuration — `--coord asis`, no tRNA — and compares the result to
+v1 as a sorted set of rows. It **reproduces all 718 272 rows exactly.** Since
+v1 has no builder of its own, that test is what establishes that these rules
+really are v1's rules. Each was reverse-engineered and is covered by it:
+
+| rule | how it was established |
+|---|---|
+| one entry per **gene**, never per transcript | v1 has exactly 78 348 distinct gene ids; the GTF has exactly 78 348 `gene` features |
+| exons are the **merged union** of all transcripts' exons | Xkr4's GTF exons `3283662-3285855`, `3283832-3286567`, `3284705-3287191` appear in v1 as one block `3283662-3287191` |
+| introns fill the gaps, `(prevEnd+1, nextStart-1)` | matches v1's Xkr4 rows one for one |
+| `gene_biotype` CamelCased per `_` token, untouched if no `_` | reproduces **all 37** biotypes in v1, no misses, no extras |
+| symbol takes `-`→`.`, falls back to the gene id | 2675 gene names contain `-`, 551 have no `gene_name`, **0 contain `_`** so the downstream 4-field split is safe |
+
+Cross-checked further: the two independent routes to v2 — shifting v1's own
+rows, and rebuilding from the GTF — give **identical content** across all
+718 272 gene rows.
+
+The tRNA rows were verified separately: `bedtools getfasta` on this pipeline's
+own GRCm39 genome vs GtRNAdb's `mm39-tRNAs.fa` gives **407/407** identical
+(that fasta ships the high-confidence set only), and start/end/amino
+acid/anticodon for all 1137 cross-check against `mm39-tRNAs-detailed.out` at
+**1137/1137**.
+
+Knobs: `BED_COORD=fix|asis`, `WITH_TRNA=yes|no`, `TRNA_SET=all|high`,
+`VALIDATE=yes|no`. Runtime ~90 s.
+
+Source is **GtRNAdb `Mmusc39`** (mm39 = GRCm39, matching this pipeline's
+genome). That was not guessed: the published tables' tRNA rows are named
+`13.tRNA1495.ValAAC`, i.e. the UCSC/GtRNAdb tRNAscan-SE id scheme, and UCSC
+serves a `tRNAs` track for mm10 but **not** mm39 — so GtRNAdb is the only route
+to GRCm39. GtRNAdb's own BED uses its newer `tRNA-Glu-TTC-2-1` naming, so the
+tRNAscan ids are recovered from the `_name_map.txt` in the same tarball
+(covers 1137/1137).
+
+**The naming conversion is mandatory, not cosmetic.** `get_cellDict` special-
+cases tRNA with `Gene.replace('-','.') + '_tRNA' if 'tRNA' in Gene`, and the
+674 low-confidence `tRX-*` names do not contain the string `tRNA` — so the
+special case never fires and `'tRX-Arg-NNN-482-1'.rsplit('_')[-2]` raises
+**IndexError**. Pasting GtRNAdb's BED in unconverted would *crash* step 6, not
+degrade it. Verified by running those three lines. The emitted tRNAscan-style
+names always contain `tRNA`.
+
+Names must also be **bare** — `13.tRNA1495-ValAAC`, no `_Biotype_label` suffix,
+unlike every other row in the file. Derived by working the published output
+backwards; the suffixed variants all produce a different string.
+
+Verified three ways, all independent of the script's own eight checks:
+
+| check | result |
+|---|---|
+| `bedtools getfasta` on this pipeline's GRCm39 vs GtRNAdb's `mm39-tRNAs.fa` | **407/407** identical (that fasta ships the high-confidence set only) |
+| all rows vs `mm39-tRNAs-detailed.out` (start, end, amino acid, anticodon) | **1137/1137** agree |
+| base BED after the run | byte-identical, md5 in the provenance file |
+
+#### The coordinate bug, and why v2 makes two changes rather than one
+
+**v1's coordinates are 1 bp too high on every row.** It copies Ensembl GTF
+coordinates verbatim, but GTF is 1-based inclusive and BED is 0-based
+half-open. Verified on Gm26206:
+
+```
+GTF   1  3172239  3172348          110 bp, 1-based inclusive
+BED   1  3172239  3172348  +  ENSMUSG00000064842_Gm26206_snRNA_exon  109 ...
+```
+
+bedtools reads that as `[3172239,3172348)` = 1-based 3172240..3172348, i.e.
+109 bp **with the gene's first base missing**.
+
+Three consequences, all confirmed:
+
+1. `deal_with_*mappers.sh` sets `jS:IN` only when `readstart >= refstart`, and
+   step 6 keeps non-splicing biotypes **only** when `jS == IN` (protein-coding
+   and friends are kept regardless). So on short features — miRNA, snoRNA,
+   snRNA, scaRNA, misc_RNA, ribozyme, tRNA — a read covering the whole feature
+   is silently **dropped**.
+2. Adjacent exon/intron rows leave a 1 bp hole. Xkr4's exon ends 3277540 and
+   its intron starts 3277541; as 0-based half-open that is a gap at 3277540.
+3. **48 rows are zero-length and can never match anything** — 46 introns and
+   2 exons that are 1 bp features in the GTF, where 1-based `start == end`.
+   Copied verbatim they become empty intervals. The shift turns them into
+   correct 1 bp intervals.
+
+**Measured**, on real cell 002 (not a blank), 1,187,385 single-mapper reads
+intersected against v1's 7,878 non-splicing rows under both conventions:
+
+| convention | same-strand overlaps | kept (`jS:IN`) |
+|---|---|---|
+| v1 as-is | 90,682 | 52,464 (57.85%) |
+| `start-1` | 90,724 | **56,799 (62.61%)** |
+
+**+4,335 reads, +8.3% relative, in one cell.** That is why `BED_COORD` defaults
+to `fix`, and why v2 changes coordinates *as well as* adding tRNA: shipping the
+new tRNA rows in honest 0-based alongside 718k rows that are 1 bp high would
+put **two conventions in one file**, which is worse than either alone.
+
+The fix is `start-1` and `genestart-1` with `genelen` recomputed; `end` and
+`geneend` were already right. Verified that exon/intron rows become exactly
+contiguous (0 gaps in a 50k-row sample), that no start goes negative (v1's
+minimum start and genestart are both 1), and that the resulting gene spans sit
+at offset −1 from the GTF across **78,348 genes**.
+
+`BED_COORD=asis` reproduces v1's convention on every row, shifting the new tRNA
+rows +1 to match, so that file is internally consistent too — tested, and it
+reproduces Gm26206 byte-for-byte. Use it only to reproduce v1-era numbers; it
+is knowingly 1 bp wrong.
+
+**Introns.** 78 of the 1137 tRNA loci are intron-containing; one row is emitted
+spanning the whole locus. Measured: introns are 3.9% of all tRNA span, 37.2% of
+the span of those 78, median 43 bp. For a total-RNA method that is arguably
+right rather than a compromise — unspliced pre-tRNA is a real species in a VASA
+library.
+
+**Do not try to reproduce the paper's tRNA ids.** GtRNAdb has re-run
+tRNAscan-SE and renumbered: of the paper's 470 non-combination tRNA entries,
+only 299 (64%) agree with the *current* mm10 name_map on both number and
+isotype, 162 conflict (mostly demoted to `tRX`), 9 no longer exist. If the
+numbering does not survive within one assembly it will not survive
+GRCm38 → GRCm39. Only isotype-level biology is comparable.
+
+**Before switching `REF_BED`**, note that adding tRNA changes non-tRNA counts
+too: tRNA is a non-splicing biotype, so it takes priority over protein-coding
+in `gene_assignment`, and reads currently going to a host gene or nowhere will
+move. That is the paper's intended behaviour, but it means v1 and v2 tables
+cannot be mixed. Cost of the switch is step 5 (~15 min) + step 6 (~3 h);
+steps 1–4 are unaffected.
+
+**Steps 1–5 are all done and verified** (`50804554` for step 5).
 
 **The standing check after any stage** — cheap, and it is the one that caught
 the stale-input run:
@@ -1086,14 +1337,69 @@ check costs seconds and does not rely on believing that.
    subdirectories, this is the moment to do it** — after step 6 the layout is
    frozen into the tables. `CELLID_FROM=r` takes the id from the read name
    instead (`001`, no path) and sidesteps it entirely.
-2. **Sizing is unmeasured.** Upstream's note asks ~160 GB for a full 384-cell
-   plate; 16 cells should need far less, but measure rather than assume — and
-   note step 5's own 120 GB request turned out to be 6× what it used.
+2. **Sizing is measured** — see the block above `step6_pickle()` in
+   `pipeline.sh`. `sbatch -c 8 --mem=128G -t 8:00:00`, expect **~3 hours**.
+
+   The measurement: `countTables_2pickle_cellsSpliced.py` was run on one cell at
+   a time (jobs `50806890` / `50806891`, cells 002 and 007 — both real cells,
+   deliberately not blanks). 69 MB of input → 28m36s / 3.24 GB; 254 MB →
+   1h47m27s / 12.22 GB. That is 3.68× the input for 3.76× the time and 3.77×
+   the memory — **scaling exponent 1.02 on both, i.e. linear**, so extrapolation
+   is safe. Over all 16 cells (2.6 GB of `*_genes.bed.gz`): ~17.7 core-hours,
+   with cell 011 alone at ~173 min and ~20 GB.
+
+   **Do not raise the concurrency.** `ncores = 8` is hardcoded at line 24 of the
+   script, and 8 is already optimal: wall time is pinned by the single largest
+   cell at ~173 min, so 8, 12 and 16 workers all finish at the same moment,
+   while worst-case peak memory rises 104 → 121 GB. Going wider buys nothing.
+
+   | workers | wall (lower bound) | worst-case peak RAM |
+   |---|---|---|
+   | 4 | 265 min | 70 GB |
+   | **8** | **173 min** | **104 GB** |
+   | 12 | 173 min | 121 GB |
+   | 16 | 173 min | 121 GB |
+
+   The only way past 173 min is parallelism *within* a cell, which the script
+   does not do; not worth a rewrite for a 3-hour job.
+
+### How step 6 works, in case you need to change it
+
+Input is every `*_genes.bed.gz` — **single and multi together**, from
+`glob(cell + '*_genes.bed.gz')` inside `get_cellDict`. The cell *list* comes
+from the singlemapper files alone (`glob(folder + '/*.singlemappers_genes.bed.gz')`),
+so a cell whose single file is missing disappears silently.
+
+Per cell: the biotype and exon/intron label are parsed **out of the gene name**
+(`ENSMUSG..._Xkr4_ProteinCoding_exon` → Biotype, Label), `TEC` rows are dropped,
+and non-splicing biotypes are kept only when `jS == IN` — a small ncRNA is short
+enough that a read hanging off its edge is probably something else. Then rows
+are grouped by read name and `gene_assignment` picks one winner per read:
+fewest mismatches → `jS:IN` if any → **non-splicing biotypes take priority over
+protein-coding** → then, if several genes survive, they are joined with `-` and
+the exonic ones win when labels disagree. Within a single gene, `intron` wins
+(VASA counts unspliced, so that is the conservative call).
+
+UMI deduplication is implicit: `cnt[gene][umi].update([label])` — the UMI *is*
+the dict key, and the `Counter` records how often that UMI was seen as exon vs
+intron. Step 7 turns that into spliced / unspliced / total.
+
+Two places where the code does not match this repo's own description:
+
+- Combination genes are joined with `-`, not `_` (`'-'.join(gdf.keys())`).
+  `CLAUDE.md` says `geneA_geneB`.
+- **"Shortest wins" is not implemented.** Two comments read
+  `# here we could add a length/biotype layer`; there is no length tie-break
+  anywhere, which is consistent with `Length` (column 8) never being read.
 
 ### Known-open, not urgent
 
-- The STAR index and the annotation BED still have **no build script** (see
-  "Reference"). Only the rRNA fasta does.
+- The **STAR index** still has no build script (see "Reference"). The rRNA
+  fasta and, as of 2026-07-27, the annotation BED both do —
+  `build_annotation_bed.sh` + `gtf2bed_vasa.py` rebuild the BED from the
+  Ensembl GTF and GtRNAdb, and prove themselves by reproducing v1 exactly.
+  The v1 *file* is still the artifact of an unscripted build, but it is no
+  longer irreplaceable.
 - `../a_Mapping/riboread-selection.py` never flushes its last read group, so one
   read per cell is counted but never written. Harmless; documented in "Step 3"
   so nobody rediscovers it as a bug.

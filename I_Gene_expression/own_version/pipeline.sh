@@ -613,7 +613,42 @@ step5_assign() {
 # step6 -- collapse every cell into one UMI-aware structure
 # Runs ONCE over the whole folder (not per cell), so steps 2-5 must be finished
 # for every cell first.
+#
+# Sizing, MEASURED 2026-07-27 by running countTables_2pickle_cellsSpliced.py on
+# ONE cell at a time (jobs 50806890 / 50806891, cells 002 and 007 -- both real
+# cells, deliberately not a blank):
+#
+#     cell 002:  69 MB of *_genes.bed.gz  ->  28m36s,   3.24 GB
+#     cell 007: 254 MB                    ->  1h47m27s, 12.22 GB
+#
+# 3.68x the input costs 3.76x the time and 3.77x the memory: scaling exponent
+# 1.02 on both, i.e. LINEAR. Extrapolated over all 16 cells (2.6 GB total):
+# ~17.7 core-hours, with cell 011 alone at ~173 min / ~20 GB.
+#
+# DO NOT RAISE THE CONCURRENCY. The script hardcodes `ncores = 8` (line 24) and
+# 8 is already optimal here: wall time is pinned by the single largest cell at
+# ~173 min, so 8, 12 and 16 workers all finish at the same time -- but worst-
+# case peak memory climbs 104 -> 121 GB. Going wider buys nothing and costs RAM.
+# The only way past 173 min would be parallelism WITHIN a cell, which the
+# script does not do and which is not worth a rewrite for a 3-hour job.
+#
+# MEMORY REQUEST RAISED 128G -> 200G, 2026-07-27, before the first all-cell run.
+# The two measurements give 45.3 and 45.9 GB of RSS per GB of *_genes.bed.gz
+# (3.24/0.0715 and 12.22/0.266), i.e. ~45.6 GB/GB. `pool.imap_unordered` takes
+# the cells in glob order, not size order, so the worst case is the 8 largest
+# running at once: 011+010+012+013+007+009+008+003 = 2.31 GB of input -> ~106 GB.
+# On top of that the PARENT accumulates every finished cell's dict in `gcnt`
+# and then builds `cntdf` from it, and that is NOT part of the per-worker peak.
+#
+# 128G left only ~15% headroom over a figure extrapolated from two points, and
+# an OOM costs the full 3 hours. ncpu nodes carry 2 TB and MaxMemPerCPU=28000,
+# so at -c 8 the ceiling is 224G and 200G is free -- it does not slow queueing
+# in any way that matters here. Do not read 200G as a measurement: the measured
+# number is ~106 GB + parent, and the rest is deliberate headroom.
 ###############################################################################
+
+# sbatch -c 8 --mem=200G -t 8:00:00 pipeline.sh step6
+
 step6_pickle() {
     say "step6: building the count pickle (this is the memory-hungry step)"
     eval "$CONDA_ACTIVATE"

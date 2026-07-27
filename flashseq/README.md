@@ -304,11 +304,31 @@ confirmed to have applied).
 
 ## What this means for the VASA comparison
 
-| rung | libraries | usable? |
+**A8 is excluded — decided 2026-07-27.** It is recorded as `qc_verdict = exclude` in
+`sample_metadata.tsv`, which every script joins against, and carried into
+`qc_summary.tsv`, so the decision travels with the data rather than living only here.
+
+| rung | libraries | verdict |
 |---|---|---|
-| 30 pg | A9, A10 | **yes** — the cleanest low-input pair, no detectable contamination |
-| 60 pg | A7, A8 | A7 with a caveat; **A8 no** — 18.3 % of the library is not mouse |
-| ≥1.5 ng | A1–A6 | not input-comparable to VASA; use as the ceiling reference |
+| 30 pg | A9, A10 | **`ok`** — the cleanest low-input pair, no detectable contamination |
+| 60 pg | A7 | **`caveat`** — 3.6 % human CALB1; the reads are exactly identifiable and can be filtered |
+| 60 pg | A8 | **`exclude`** — 18.3 % of the library is not mouse |
+| ≥1.5 ng | A1–A6 | **`ok`**, but not input-comparable to VASA; use as the ceiling reference |
+
+Two consequences of dropping A8, and they pull in opposite directions:
+
+- **The 60 pg rung loses its replicate.** `replicate_concordance.tsv`'s 60 pg row
+  (*r* = 0.8218) is a correlation *against an excluded library* and must not be quoted.
+  There is no other 60 pg pair.
+- **The titration conclusion does not depend on it.** The cliff between 1.5 ng and pg scale
+  is shown independently by the **clean** 30 pg pair, *r* = 0.8435 against 0.980–0.987 for
+  the ng rungs. So "flat to 1.5 ng, then falls off a cliff" survives A8's removal intact;
+  what is lost is the ability to say anything about 60 pg specifically.
+
+**A8 is still processed and reported everywhere, identically to the others.** The verdict is
+a filter for interpretation, not permission to drop it from QC — its contamination is a
+finding, and removing it would destroy the well effect (G:1/H:1 adjacent) that identified the
+cause as prep rather than input amount.
 
 **Quote FLASH-seq's rRNA fraction from `rrna_bwa.tsv`** — never the nf-core biotype number,
 which measures 5S, and in preference to the k-mer lower bound. Only the bwa figures were
@@ -392,7 +412,8 @@ outstanding. Outputs in `res/flashseq/`:
 
 **`01` and `02` were re-run on 2026-07-27 after the head-of-file sampling defect was found**
 (see the finding above); every number in this README is from those re-runs. `05` and `06` are
-new in the same pass. Re-running from scratch is three login-node commands plus three
+new in the same pass. **A8 was excluded the same day** — recorded as `qc_verdict` in
+`sample_metadata.tsv` and carried into `qc_summary.tsv`, not only stated in prose. Re-running from scratch is three login-node commands plus three
 `sbatch` — see "Running it" above.
 
 ### Three unit/method traps that were found the hard way
@@ -430,21 +451,20 @@ Roughly in priority order.
    (that is the other agent's `own_version` steps 2–7; step 6 was still running at
    2026-07-27 18:30, job `50836432`, expecting ~3 h from 16:01). The FLASH-seq side is ready:
    per library QC keyed by input amount, with A9/A10 (30 pg) as the single-cell-equivalent
-   comparison point and A1–A6 as the not-RNA-limited ceiling. The rRNA leg of that comparison
-   is already done and like-for-like — see the bwa section above.
-2. **Decide A7/A8's fate.** A8 is not a usable 60 pg data point (18.3 % human CALB1). A7 is
-   at 3.6 %; the reads are exactly identifiable, so filtering them is straightforward if you
-   want to keep it. This is a judgement call, not a technical one.
-3. **Decide whether a re-run with `--2colour 20` is worth it.** `06_trim_options.sh` has
+   comparison point and A1–A6 as the not-RNA-limited ceiling; **A8 is excluded**. The rRNA
+   leg of that comparison is already done and like-for-like — see the bwa section above.
+2. **Decide whether a re-run with `--2colour 20` is worth it.** `06_trim_options.sh` has
    quantified the gain: 2.7 % fewer junk read pairs reaching STAR on A10, and nothing
    recovered, because those pairs have no insert. Putting a number on the mapping-rate change
    needs the STAR index this run did not save (22 min to rebuild). Do **not** add the second
    adapter pattern — measured harmful, see above.
-4. **Fill the 1.5 ng → 60 pg gap** (~500 pg, ~150 pg) if locating the sensitivity floor is
+3. **Fill the 1.5 ng → 60 pg gap** (~500 pg, ~150 pg) if locating the sensitivity floor is
    the actual experimental question — the current design brackets it but does not sample it.
-5. **Consider re-running nf-core with `--save_reference` fixed**, or at least regenerate the
+   This is now the *only* way to get a 60 pg measurement at all, since excluding A8 leaves
+   that rung with a single unreplicated library.
+4. **Consider re-running nf-core with `--save_reference` fixed**, or at least regenerate the
    truncated `filtered.gtf`, if this run's saved reference will ever be reused. Rebuilding
-   the STAR index is also the prerequisite for putting a number on item 3.
+   the STAR index is also the prerequisite for putting a number on item 2.
 
 Not started, deliberately: the comparison itself (item 1), which is blocked on the VASA count
 tables, and anything that would modify `data/flashseq/` — every pass so far only reads that

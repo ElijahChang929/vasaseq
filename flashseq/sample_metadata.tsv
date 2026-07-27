@@ -15,14 +15,32 @@
 # well is the position on plate eASF_A07136 and is NOT decoration: the human
 # CALB1 contamination reported in README.md tracks wells G:1/H:1, not input
 # amount, and that is only visible if the well is carried through the analysis.
-library	lims_name	input_amount	input_pg	replicate	well	lims_id
-ZHA8833A1	30ng_1	30 ng	30000	1	A:1	2-8914777
-ZHA8833A2	30ng_2	30 ng	30000	2	B:1	2-8914778
-ZHA8833A3	3ng_1	3 ng	3000	1	C:1	2-8914779
-ZHA8833A4	3ng_2	3 ng	3000	2	D:1	2-8914780
-ZHA8833A5	1pt5ng_1	1.5 ng	1500	1	E:1	2-8914781
-ZHA8833A6	1pt5ng_2	1.5 ng	1500	2	F:1	2-8914782
-ZHA8833A7	60pg_1	60 pg	60	1	G:1	2-8914783
-ZHA8833A8	60pg_2	60 pg	60	2	H:1	2-8914784
-ZHA8833A9	30pg_1	30 pg	30	1	A:2	2-8914785
-ZHA8833A10	30pg_2	30 pg	30	2	B:2	2-8914786
+#
+# qc_verdict is a DECISION, not a measurement, taken by the user 2026-07-27 on
+# the evidence in README.md ("The 60 pg pair is contaminated with human CALB1"):
+#
+#   ok       usable as it stands
+#   caveat   usable if the caveat in qc_note is carried with it
+#   exclude  do not use as a data point
+#
+# A8 is excluded: 18.3% of it is human CALB1, so it is not a 60 pg measurement
+# of anything. That leaves the 60 pg rung with A7 alone and therefore with NO
+# replicate, so the 0.8218 in replicate_concordance.tsv is a correlation against
+# an excluded library and must not be quoted. The titration conclusion does not
+# depend on it: the CLEAN 30 pg pair gives r = 0.8435 independently.
+#
+# A8 is still processed and reported everywhere, exactly like the others. The
+# verdict is a filter for downstream interpretation, not permission to drop it
+# from QC -- its contamination is a finding, and hiding it would lose the well
+# effect that identified it.
+library	lims_name	input_amount	input_pg	replicate	well	lims_id	qc_verdict	qc_note
+ZHA8833A1	30ng_1	30 ng	30000	1	A:1	2-8914777	ok
+ZHA8833A2	30ng_2	30 ng	30000	2	B:1	2-8914778	ok
+ZHA8833A3	3ng_1	3 ng	3000	1	C:1	2-8914779	ok
+ZHA8833A4	3ng_2	3 ng	3000	2	D:1	2-8914780	ok
+ZHA8833A5	1pt5ng_1	1.5 ng	1500	1	E:1	2-8914781	ok
+ZHA8833A6	1pt5ng_2	1.5 ng	1500	2	F:1	2-8914782	ok
+ZHA8833A7	60pg_1	60 pg	60	1	G:1	2-8914783	caveat	3.6% human CALB1 (well G:1); reads are exactly identifiable and can be filtered
+ZHA8833A8	60pg_2	60 pg	60	2	H:1	2-8914784	exclude	18.3% human CALB1 (well H:1); not a usable 60 pg data point
+ZHA8833A9	30pg_1	30 pg	30	1	A:2	2-8914785	ok
+ZHA8833A10	30pg_2	30 pg	30	2	B:2	2-8914786	ok

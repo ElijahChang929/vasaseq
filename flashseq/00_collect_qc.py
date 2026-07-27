@@ -145,6 +145,13 @@ def main() -> None:
             "input_pg": int(m["input_pg"]),
             "replicate": m["replicate"],
             "well": m["well"],
+            # A decision, not a measurement -- see sample_metadata.tsv's header.
+            # Carried into the tidy table so that anything reading qc_summary.tsv
+            # can see that A8 is excluded without having to know why from
+            # elsewhere. Nothing here filters on it: A8 is measured and reported
+            # exactly like the rest, and its numbers are what justified the call.
+            "qc_verdict": m.get("qc_verdict", ""),
+            "qc_note": m.get("qc_note", ""),
             # sequencing
             "raw_pairs": num(f1, "Total Sequences"),
             "pct_gc": num(f1, "%GC"),

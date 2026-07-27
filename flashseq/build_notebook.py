@@ -173,10 +173,21 @@ cells.append(md("""
 
 Pearson *r* of log2(TPM+1) between the two replicates of each rung, over genes expressed in
 both (TPM > 1).
+
+**The 60 pg row is not usable.** A8 was excluded on 2026-07-27 (section 5), so that *r* is a
+correlation against an excluded library, and the rung has no other replicate. The conclusion
+below does not rest on it: the **clean** 30 pg pair shows the same collapse independently.
 """))
 
 cells.append(code("""
 conc = pd.read_csv(RES / "replicate_concordance.tsv", sep="\\t")
+# Mark rows whose pair includes an excluded library, so the 60 pg r cannot be
+# read off this table as if it meant something.
+bad = set(meta.loc[meta.qc_verdict == "exclude", "library"])
+conc["verdict"] = [
+    "EXCLUDED PAIR" if ({r1, r2} & bad) else "ok"
+    for r1, r2 in zip(conc["rep1"], conc["rep2"])
+]
 conc
 """))
 
@@ -542,24 +553,39 @@ instead — the R2-mate rows contribute ~0 to it.
 
 cells.append(md("""
 Poly-G is the NovaSeq X two-colour dark-cycle artefact: with no signal, the base caller emits
-G. TrimGalore's adapter pass does not remove it, so it survives into STAR and is part of what
-gets discarded as "too short". Adding `--nextseq-trim 20` (cutadapt) or `--2colour 20`
-(TrimGalore) to the trim step would recover some of those reads — worth quantifying on one
-library before deciding whether a re-run is justified.
+G. TrimGalore's adapter pass does not remove it, so `06_trim_options.sh` tested whether
+`--nextseq-trim 20` / `--2colour 20` would help. It removes 2.7 % of A10's read pairs — but
+those pairs have **no insert to recover**: the poly-G reads and the "read-through that
+survives trimming" turn out to be the same fragments seen from their two ends (1,019 of
+1,032). So the gain is a cleaner denominator, not recovered data. The second adapter pattern
+that was also proposed is measured *harmful* and has been withdrawn.
 
 ## 6. What this means for the VASA-seq comparison
 
 VASA-seq operates at single-cell input, ~10–30 pg. The comparable FLASH-seq rungs are
-therefore the two lowest — and they are also the two most compromised:
+therefore the two lowest — and they are also the two most compromised.
 
-| rung | libraries | usable for the comparison? |
-|---|---|---|
-| 30 pg | A9, A10 | **yes** — the cleanest low-input pair; no detectable contamination |
-| 60 pg | A7, A8 | **A7 with a caveat** (contaminant present); **A8 no** — 18.3 % of the library is not mouse |
-| 1.5 ng and above | A1–A6 | not input-comparable to VASA; use as the ceiling reference |
+**A8 was excluded on 2026-07-27.** The decision lives in `sample_metadata.tsv` as
+`qc_verdict`, which every script joins against, so it travels with the data:
+"""))
 
+cells.append(code("""
+meta[["library", "input_amount", "well", "qc_verdict", "qc_note"]].fillna("")
+"""))
+
+cells.append(md("""
 So the honest single-cell-equivalent comparison uses **A9 and A10**, with A1–A6 showing what
-FLASH-seq achieves when RNA is not limiting.
+FLASH-seq achieves when RNA is not limiting. A7 is usable only with its 3.6 % contamination
+carried as a caveat, and **the 60 pg rung now has no replicate at all** — which is why its
+row in section 3 must not be quoted.
+
+Excluding A8 costs nothing in the headline conclusion: the cliff between 1.5 ng and pg scale
+is shown independently by the clean 30 pg pair (*r* = 0.8435 against 0.980–0.987 for the ng
+rungs). What is lost is the ability to say anything specific about 60 pg.
+
+A8 is nevertheless still processed and reported everywhere in this notebook, exactly like the
+others. Its contamination is a finding, and hiding it would destroy the well effect
+(G:1/H:1 adjacent) that identified prep rather than input amount as the cause.
 
 Quote FLASH-seq's rRNA fraction from **section 4b** (`rrna_bwa.tsv`) — never the nf-core
 biotype number, which measures 5S, and in preference to the k-mer lower bound. Only the bwa

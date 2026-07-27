@@ -34,13 +34,24 @@
 #      stranded=y -> written reverse-complemented by defect A -> STAR now maps
 #      it SENSE to the minus-strand gene -> counted as rRNA.
 #
-#   The paper's authors used only a handful of full-length NCBI sequences
-#   (Rn45s, Rn6s, 12s, 16s, 47s) and no Ensembl dump, so defect B never fires
-#   for them and defect A stays latent. That is why their table has 72 UFIs
-#   here and ours has 95,823.
+#      This entry is UNIQUE in that respect: of the 915 Ensembl-derived entries,
+#      897 have no homology to the NCBI units (5S and dispersed fragments), 17
+#      are stored sense, and exactly ONE is stored antisense -- this one. See
+#      EVIDENCE 5. That is why a single locus blows up and no other does.
+#
+# WHAT WE CANNOT SAY, AND EARLIER DRAFTS OF THIS FILE SAID ANYWAY
+#   Do not claim the authors "used only NCBI sequences and no Ensembl dump".
+#   Their rRNA FASTA was never deposited, the Methods name no accessions, and
+#   a_Mapping/README.md's list is prefixed "e.g." -- it is an example, not a
+#   specification. The published table also argues against that story: on every
+#   rRNA-biotype gene EXCEPT this one their residual is equal to or higher than
+#   ours (8 vs 2, 13 and 11 on human 5.8S where we have 0), i.e. our depletion of
+#   the dispersed rRNA genes is at least as thorough as theirs. What the evidence
+#   does support is narrower and sufficient: whatever their reference contained,
+#   it did not carry this locus in an orientation that produces this artefact.
 #
 # WHAT THIS SCRIPT DOES
-#   Reproduces all four pieces of evidence from files already on disk. Read
+#   Reproduces all five pieces of evidence from files already on disk. Read
 #   only; it writes nothing outside $TMP.
 #
 # Usage:  ./04_diagnose_residual_rrna.sh [cell]      (default 005)
@@ -118,11 +129,24 @@ samtools view "$BAM" | awk '
          printf "  all hits reverse -> spared+flipped: %d (%.1f%%)\n", spared, 100*spared/withhit }'
 
 echo
+echo "=== EVIDENCE 5: how many Ensembl entries are stored antisense? ==="
+# The census that makes this a one-locus defect rather than a systemic one.
+awk '/^>(mouse_rDNA_47S|human_45S)/{k=1;print;next} /^>/{k=0} k' "$FASTA" > "$TMP/units.fa"
+awk '/^>(mouse_ENS|human_ENS)/{k=1;print;next} /^>/{k=0} k'        "$FASTA" > "$TMP/ens.fa"
+bwa index "$TMP/units.fa" 2>/dev/null
+echo "  Ensembl-derived entries: $(grep -c '^>' "$TMP/ens.fa")"
+bwa mem -t 4 "$TMP/units.fa" "$TMP/ens.fa" 2>/dev/null | samtools view - \
+  | awk '$2==0{s++} $2==16{a++} $2==4{n++}
+         END{printf "  sense (correct)          : %d\n  ANTISENSE (the defect)   : %d\n  no homology to the units : %d\n", s+0, a+0, n+0}'
+bwa mem -t 4 "$TMP/units.fa" "$TMP/ens.fa" 2>/dev/null | samtools view - \
+  | awk '$2==16{print "  antisense entry: "$1" -> "$3" @ "$4}'
+
+echo
 echo "FIXES, in order of cost:"
-echo "  B (cheap, and what the authors effectively did): drop the Ensembl"
-echo "    gene_biotype dump from the rRNA FASTA, or at least the entries whose"
-echo "    stored orientation is antisense to the 47S unit. Rebuild + re-run"
-echo "    steps 3-7."
+echo "  B (cheap, one-line): the defect is ONE entry of 915. Drop or re-orient"
+echo "    the antisense entry in build_rrna_reference_mixed.sh (or orient every"
+echo "    Ensembl entry to the NCBI units instead of trusting the annotation"
+echo "    strand). Rebuild + re-run steps 3-7."
 echo "  A (correct, but changes every run): in riboread-selection.py emit the"
 echo "    original orientation for reverse records -- revcomp r0.seq and reverse"
 echo "    r0.qual before writing. This is an upstream published script, so under"

@@ -17,8 +17,12 @@ things that would make the tables wrong without making them crash:
   4. BIOTYPE COMPOSITION. FLASH-seq is poly-A primed, so protein-coding
      should dominate. Reported on the non-rRNA remainder, the denominator the
      comparison uses, as well as on all reads.
-  5. PE vs SE. The two arms, side by side: reads, genes detected, and the
-     overlap of their detected-gene sets.
+  5. PE vs SE. Reports which arms actually reached step 7. On this path the
+     answer is SE only -- step 6 cannot parse a paired-end step-5 BED (see
+     NOUMI_PATH.md §5a) -- so the side-by-side comparison is reported as
+     unavailable, with the quarantined PE files named. The two-column
+     comparison (reads, genes detected, Jaccard of the detected sets, log-count
+     correlation) is still implemented, for whenever a fork makes PE usable.
 
 Usage: noumi_dryrun_report.py <outdir> <sample> <celldir> <report.txt>
 """

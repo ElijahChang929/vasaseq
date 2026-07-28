@@ -47,19 +47,20 @@ PROVENANCE OF THE HELPERS BELOW
 The point is fidelity, not tidiness. What is tested here must be what will
 execute.
 
-  VERBATIM, character-for-character identical to the upstream source
+  VERBATIM -- identical to the upstream source
   (`a_Mapping/countTables_2pickle_cellsSpliced.py`, `countTables_fromPickle.py`
-  at the commit this repo has):
+  at the commit this repo has) up to TRAILING WHITESPACE only, which several
+  upstream lines carry and which is stripped here. No other difference:
     - get_UMI                (2pickle, lines 36-45)
     - addCount               (2pickle, lines 26-34)
-    - countTotalReads        (fromPickle, lines 47-54)  -- BOTH branches kept
+    - countTotalReads        (fromPickle, lines 47-53)  -- BOTH branches kept
     - countTotalUMI          (fromPickle, lines 55-56)
-    - countExonReads         (fromPickle, lines 59-68)  -- BOTH branches kept
-    - countIntronReads       (fromPickle, lines 73-82)  -- BOTH branches kept
-    - countExonUMI           (fromPickle, lines 69-71)
-    - countIntronUMI         (fromPickle, lines 83-85)
-    - reduceGeneName         (fromPickle, lines 142-165)
-    - remove_ENSandGm        (fromPickle, lines 265-271)
+    - countExonReads         (fromPickle, lines 59-67)  -- BOTH branches kept
+    - countIntronReads       (fromPickle, lines 73-81)  -- BOTH branches kept
+    - countExonUMI           (fromPickle, lines 69-70)
+    - countIntronUMI         (fromPickle, lines 83-84)
+    - reduceGeneName         (fromPickle, lines 142-166)
+    - remove_ENSandGm        (fromPickle, lines 267-273)
 
   TRIMMED, and why:
     - bc2trans (fromPickle, lines 89-96) is reproduced as `bc2trans_K(x, K)`
@@ -234,8 +235,9 @@ def bc2trans_K(x, K):
 # ---------------------------------------------------------------------------
 # The transforms step 6 applies to the BED's gene-name column before any of
 # the fromPickle helpers ever see it. VERBATIM expressions from
-# countTables_2pickle_cellsSpliced.py lines 93-97 and 99, restated as a
+# countTables_2pickle_cellsSpliced.py lines 93, 94, 95 and 100, restated as a
 # function over one name (upstream applies them column-wise with df.apply).
+# NB line 100 -- not 99, which is the biotypeWsplicing/jS:IN row filter.
 # ---------------------------------------------------------------------------
 def step6_name_transforms(raw):
     """raw = column 5 of the annotation BED. Returns (index_label, biotype,
@@ -243,7 +245,7 @@ def step6_name_transforms(raw):
     g = raw.replace('-', '.') + '_tRNA' if 'tRNA' in raw else raw   # line 93
     label = g.rsplit('_')[-1]                                       # line 94
     biotype = g.rsplit('_')[-2]                                     # line 95
-    index_label = '_'.join(g.rsplit('_')[:-1])                       # line 99
+    index_label = '_'.join(g.rsplit('_')[:-1])                       # line 100
     return index_label, biotype, label
 
 
@@ -568,7 +570,7 @@ def main():
     emit("           its collapsed label list -- exact membership, not substring")
     emit("           (fromPickle lines 61, 75: \"'intron' not in ['-'.join(...)]\")")
     emit("  noUMI  : a read is exonic iff 'exon' is a SUBSTRING of its label, and")
-    emit("           intronic iff 'intron' is a substring (lines 65, 79)")
+    emit("           intronic iff 'intron' is a substring (lines 66, 80)")
     emit("A combination label such as 'exon-intron' (one read spanning two genes,")
     emit("one exonically one intronically) collapses to 'exon-intron', which is not")
     emit("the literal string 'intron', so the VASA branch counts it as EXON only.")
@@ -680,7 +682,7 @@ def main():
 
     # -----------------------------------------------------------------------
     section('6. FILTER SENSITIVITY -- ncells = max(5, round(0.01*ncols))')
-    emit('step 7 line ~223, reached only when argv[4] == "y":')
+    emit('step 7 line 182, reached only when argv[4] == "y":')
     emit('    ncells = max(5, round(0.01*len(cntdf.columns))); nreads = 1')
     emit()
     emit('%8s %8s %10s' % ('ncols', 'ncells', 'as % cols'))

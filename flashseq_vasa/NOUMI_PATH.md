@@ -144,7 +144,7 @@ Consequences, in order of how much they matter:
 2. **`TranscriptCounts` is that same mask, and is not a quantification.**
    fromPickle line 87 reads the UMI length off the *first UMI it finds in the
    pickle*, then line 88 sets `K = 4**len(umi)`. With `umi == 'A'`,
-   **K = 4**, not 4096. `bc2trans` (lines 89-96) is then applied to the UFI
+   **K = 4**, not 4096. `bc2trans` (lines 89-96, clamp branch at 90) is applied to the UFI
    table at lines 102, 239 and 247-249. `bc2trans(0) = 0` and
    `bc2trans(1) = 1.0` exactly, at K = 4 and at K = 4096 alike — **[precheck]**,
    which tabulates `bc2trans` at both K. Since UFI ∈ {0,1} on this path, every
@@ -159,8 +159,9 @@ Consequences, in order of how much they matter:
    information. **Do not use any `*.TranscriptCounts.tsv` from the no-UMI path
    as a quantification. Use `ReadCounts`.**
 3. **The exon/intron branches are not equivalent.** VASA tests exact list
-   membership (`'intron' not in ['-'.join(set(k.rsplit('-')))…]`), the no-UMI
-   branch tests substring containment (`'exon' in k`). A combination label
+   membership (`'intron' not in ['-'.join(set(k.rsplit('-')))…]`, lines 61 and
+   75), the no-UMI branch tests substring containment (`'exon' in k` / `'intron'
+   in k`, lines 66 and 80). A combination label
    `'exon-intron'` — one read spanning two genes, one exonically and one
    intronically — is not the literal string `'intron'`, so VASA counts it as
    **exon** only; the no-UMI branch matches both substrings and counts it in
@@ -248,7 +249,7 @@ fact have handled it:
 - Both mates carry the same `NH`, so both survive the singlemapper filter and
   both become BED rows.
 - Step 6 groups the BED by the `Name` column, which is the QNAME
-  (2pickle line 101: `gdf = df.groupby('Name')`), so the two mates of a
+  (2pickle line 102: `gdf = df.groupby('Name')`), so the two mates of a
   fragment fall into **one** group and are assigned **once** — a fragment
   count, which is what you want.
 - But STAR's `Log.final.txt` "Number of input reads" counts *pairs*, and the

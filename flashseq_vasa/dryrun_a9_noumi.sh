@@ -4,10 +4,12 @@
 # protocol='smartseq_noUMI' path runs on FLASH-seq data.
 #
 # Library ZHA8833A9 (30 pg rung, qc_verdict=ok). A deterministic stride
-# subsample through steps 4-7 of the VASA pipeline, TWICE: once paired-end and
-# once R1-only, both landing in ONE cells/ folder so step 6 makes them two
-# columns of one table and step 7 quantifies them side by side. Nothing in
-# a_Mapping/ is modified; every upstream script is called as-is.
+# subsample is mapped and assigned TWICE -- once paired-end, once R1-only -- so
+# that the paired-end question is answered by measurement rather than argument.
+# The measured answer is that PE cannot reach step 6 at all (step C2), so only
+# the SE arm goes through steps 6-7 and step 7 sees ONE column. The PE outputs
+# are quarantined, not deleted. Nothing in a_Mapping/ is modified; every
+# upstream script is called as-is.
 #
 # WHAT IS DELIBERATE HERE, AND WHY
 # --------------------------------
@@ -38,8 +40,11 @@
 #    purely to satisfy that contract. Mode 'r' would need an SM tag injected
 #    into every read name. See NOUMI_PATH.md.
 #
-# 6. filt_unigenes = n. At ncols=2 the step-7 filter is max(5, round(0.01*2))
-#    = 5 columns out of 2, which no gene can pass.
+# 6. filt_unigenes = n. Step 7's filter is max(5, round(0.01*ncols)), so at the
+#    one column that reaches it here it demands 5 columns out of 1 -- no gene
+#    can pass, and reduceGeneName would silently lose its "exactly one component
+#    is a known unigene" rule. (It is 5 out of 2 even if both arms get through,
+#    so this does not depend on the PE outcome.)
 #
 # 7. NO TRIMMING, DELIBERATELY. This run maps the raw FASTQ so that what is
 #    proven is the smartseq_noUMI path itself and not a trimming recipe. It

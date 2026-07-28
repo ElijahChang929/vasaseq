@@ -1,0 +1,44 @@
+-------------------------------------------------------------
+[21:02:49] checking configuration
+-------------------------------------------------------------
+arm        : native
+sample     : FS_native
+libraries  : 10 -- ZHA8833A1 ZHA8833A2 ZHA8833A3 ZHA8833A4 ZHA8833A5 ZHA8833A6 ZHA8833A7 ZHA8833A8 ZHA8833A9 ZHA8833A10
+outdir     : /nemo/lab/turnerj/scratch/zhangg/vasaseq/flashseq_vasa/native
+tables to  : /nemo/lab/turnerj/working/guangxin/vasaseq/data/flashseq_vasa
+protocol   : smartseq_noUMI  stranded=n  cellid=f  filt_unigenes=n
+
+  OK   per-library stem contains '_cbc' (ZHA8833A9_cbc_noumi)
+  MISS ZHA8833A1 -- no unique ZHA8833A1_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A2 -- no unique ZHA8833A2_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A3 -- no unique ZHA8833A3_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A4 -- no unique ZHA8833A4_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A5 -- no unique ZHA8833A5_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A6 -- no unique ZHA8833A6_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A7 -- no unique ZHA8833A7_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A8 -- no unique ZHA8833A8_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A9 -- no unique ZHA8833A9_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  MISS ZHA8833A10 -- no unique ZHA8833A10_S*_R1_001.fastq.gz under /nemo/lab/turnerj/inputs/genomics-stp/guangxin.zhang/RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq
+  OK   /nemo/lab/turnerj/scratch/zhangg/vasaseq/flashseq_vasa/native
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/res/flashseq_vasa
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/data/flashseq_vasa
+  OK   /nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed
+  OK   /nemo/lab/turnerj/working/guangxin/reference/genomes/mus_musculus/GRCm39/star_index_151_r116
+       sjdbOverhang=150 (needs >= 150 for 151 nt reads) -- OK
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/I_Gene_expression/own_version/deal_with_singlemappers.sh
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/I_Gene_expression/own_version/deal_with_multimappers.sh
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/I_Gene_expression/a_Mapping/countTables_2pickle_cellsSpliced.py
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/I_Gene_expression/a_Mapping/countTables_fromPickle.py
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/flashseq_vasa/trim_to_vasalen.sh
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/flashseq_vasa/measure_vasa_readlen.py
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/flashseq_vasa/build_analysis_tables.py
+  OK   /nemo/lab/turnerj/working/guangxin/vasaseq/code/flashseq_vasa/reconcile.py
+  OK   /camp/apps/eb/software/STAR/2.7.7a-GCC-10.2.0/bin/STAR
+  OK   /camp/apps/eb/software/SAMtools/1.11-GCC-10.2.0/bin/samtools
+  OK   /camp/apps/eb/software/BEDTools/2.30.0-GCC-11.2.0/bin/bedtools
+  OK   /nemo/lab/turnerj/working/guangxin/envs/vasa/bin/cutadapt
+  OK   /nemo/lab/turnerj/working/guangxin/envs/vasa/bin/python3
+  OK   pandas 2.3.3 has DataFrame.applymap
+  OK 10 TrimGalore R1 reports under /nemo/lab/turnerj/working/guangxin/vasaseq/data/flashseq/results/trimgalore
+-------------------------------------------------------------
+ERROR: fix the MISS/PROBLEM lines above

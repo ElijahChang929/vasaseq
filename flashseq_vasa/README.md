@@ -67,10 +67,22 @@ a flag choice by roughly a factor of two:
 | both `n` | 28.10 % | 4.78 % | **5.9x** |
 | both `y` | 21.39 % | 2.39 % | **9.0x** |
 
-The published 4.3x is arithmetically sound -- it is pooled-against-pooled, which
-is the right denominator against VASA's own `ALL` row (recomputing it gives
-4.48x; the 0.2 is rounding in the transcribed VASA composition, not an error).
-It is the *flag pairing* that is mixed, not the arithmetic.
+**The published 4.3x does not reproduce, and I could not find a derivation that
+gives it.** Pooled-against-pooled is the right denominator against VASA's own
+`ALL` row -- sum(ribo)/sum(reads_in) over the trimmed arm is 4.780 %, so
+21.39/4.780 = **4.48x**. Every other candidate lands in the same band: trimmed
+mean of per-library rates 4.54x, trimmed median 4.53x, raw pooled 4.48x, raw mean
+4.55x, the 30 pg pair alone 4.46x, excluding A8 4.51x. Against VASA's 12-real-cell
+21.57 % the band is 4.49-4.59x. To land on 4.30x the FLASH-seq rate would have to
+be 4.974 %, which is not any single library (range 3.496-6.439 %) nor any central
+measure of them.
+
+So the gap is ~4 % relative and it is unexplained. It changes no conclusion --
+FLASH-seq carries several-fold less rRNA than VASA under every derivation -- but
+**quote 4.5x (pooled, and state the flag pairing), not 4.3x**, until whoever wrote
+the 4.3x can say where it came from. Two things it is NOT: it is not the
+`stranded` pairing (that moves the ratio to 5.9x or 9.0x, not to 4.3x), and it is
+not the arithmetic of the pooling, which reproduces exactly.
 
 **Recommendation, not a decision:** report `both n` (5.9x). `n` counts every
 read that aligns to rRNA regardless of orientation, which is the same question
@@ -93,15 +105,40 @@ cells (222,412 x 12 total tables):
   35,758 entries with >=10 UFIs; by expression decile the ratio climbs
   **1.69 -> 2.91 (1.73x)**. Highly-expressed entries are more duplicated, as
   expected.
-* **Direction of the bias.** Because duplication rises with expression, the
-  abundant classes take a LARGER share of reads than of molecules, and the rare
-  classes a smaller one. ProteinCoding is 82.65 % of reads vs 81.73 % of UFIs
-  (+0.91 points, ratio 1.011); lncRNA is 6.97 % vs 7.91 % (-0.94, ratio 0.881);
-  snRNA 1.333x, MiscRna 2.132x, the residual rRNA biotype 1.780x. So quoting
-  VASA UFI-shares against FLASH-seq read-shares **understates VASA's abundant
-  classes by ~1 point and overstates its rare classes by up to ~19 % relative**.
-  That is small for protein-coding and large for the small-RNA classes -- which
-  are exactly the classes a total-RNA-vs-poly-A comparison is about.
+* **Direction of the bias -- set by per-class duplication, NOT by abundance.**
+  The sign of each class's shift is decided by its own read:UFI against the
+  library's pooled 2.689: `share_ratio = (class read:UFI) / 2.689` exactly
+  (verified to 1e-3 on every row). A class more duplicated than the library
+  average takes a LARGER share of reads than of molecules; a less duplicated one
+  takes a smaller share. Abundance does not set the sign -- the small-RNA classes
+  are rare AND heavily duplicated, so they move the same way as the abundant ones.
+
+  | class | % of reads | % of UFIs | read:UFI | share ratio | effect of using UFI-shares |
+  |---|---|---|---|---|---|
+  | MiscRna | 0.960 | 0.450 | 5.73 | 2.131 | **understates by 113 %** |
+  | rRNA (residual) | 0.486 | 0.273 | 4.79 | 1.780 | understates by 78 % |
+  | snRNA | 2.972 | 2.229 | 3.58 | 1.333 | understates by 33 % |
+  | ribozyme | 0.157 | 0.131 | 3.24 | 1.205 | understates by 20 % |
+  | ProteinCoding | 82.646 | 81.734 | 2.72 | 1.011 | understates by 1 % |
+  | snoRNA | 1.525 | 1.672 | 2.45 | 0.912 | overstates by 10 % |
+  | lncRNA | 6.970 | 7.910 | 2.37 | 0.881 | overstates by 13 % |
+  | ProcessedPseudogene | 0.699 | 0.939 | 2.00 | 0.745 | overstates by 34 % |
+  | miRNA | 0.076 | 0.137 | 1.50 | 0.557 | **overstates by 80 %** |
+
+  So quoting VASA UFI-shares against FLASH-seq read-shares **understates the
+  heavily-duplicated classes (small nuclear/misc RNA, residual rRNA) by 20-113 %
+  relative, and overstates the lightly-duplicated ones (miRNA, pseudogenes,
+  lncRNA) by 10-80 %**. Protein-coding is almost exactly unbiased at 1 %, because
+  it dominates the pooled average it is being compared against. The classes a
+  total-RNA-vs-poly-A comparison is actually about are the ones where this is
+  worst, and it runs in BOTH directions depending on the class -- so it cannot be
+  absorbed into a single correction factor.
+
+  Note that the three worst-affected small-RNA classes are the RESIDUAL after
+  step 7 already dropped 8 UMI-ceiling genes (Rmrp, Rnu1a1/1b6/2.10, Rn7sk,
+  Rn7s1/2, Snord3b1-4 -- see `analysis/manifest.json`). Their read:UFI is high
+  because short, highly-expressed loci saturate a 6 nt UMI space; the ceiling
+  filter removed the saturated cases, not the tendency.
 * **Gene detection is the exception: it is immune.** Genes detected on reads and
   on UFIs are **identical in all 12 cells** (difference 0, not merely small):
   a gene seen at all is seen on >=1 read and >=1 UFI. 225,716 cell-gene entries
@@ -112,7 +149,7 @@ cells (222,412 x 12 total tables):
 | comparison | column | why |
 |---|---|---|
 | (i) rRNA fraction | **neither** -- use the bwa stage | The rRNA % lives in step 3, upstream of any counting. Do NOT use the rRNA *biotype* rows: they are the residual that survived depletion (0.506 % of reads / 0.304 % of UFIs), a different denominator, and 87.1 % of it is one entry (`ENSMUSG00000119584_Rn18s.rs5_rRNA`). Report with the stranded flag stated. |
-| (ii) biotype composition | **ReadCounts** (headline) + **TranscriptCounts** (VASA's biology) | Like against like: both sides reads. Carrying both is not hedging -- the gap between them IS the measured 1.011x/0.881x bias, and it is the honest way to show that "% protein-coding" differs between currencies. |
+| (ii) biotype composition | **ReadCounts** (headline) + **TranscriptCounts** (VASA's biology) | Like against like: both sides reads. Carrying both is not hedging -- the gap between them IS the measured bias, which runs from 2.13x (MiscRna) down to 0.56x (miRNA) and so cannot be corrected with one factor. |
 | (iii) gene detection | **UFICounts** or ReadCounts -- measurably identical | Difference is 0 in all 12 cells, so the choice is free. Use UFICounts for consistency with VASA's own tables. Depth-match instead: that is the real confound (VASA spans 6.2x of depth and 32,591-65,137 genes). |
 
 TranscriptCounts is the right column for VASA's own biology (it is UFIs with the

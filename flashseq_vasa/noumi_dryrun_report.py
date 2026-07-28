@@ -207,8 +207,20 @@ def main():
                         % (cc, 100.0 * pc / max(1, tot - ribo)))
 
     # -----------------------------------------------------------------------
-    section('5. PE vs SE -- do the two arms agree on what is there?')
+    section('5. PE vs SE')
     cols = list(tot_r.columns)
+    emit('columns that reached step 7: %s' % cols)
+    pe_dir = os.path.join(outdir, 'cells_pe_unusable')
+    if os.path.isdir(pe_dir):
+        nq = len([f for f in os.listdir(pe_dir)])
+        emit()
+        emit('The PE arm is NOT here: %d of its files are quarantined in' % nq)
+        emit('cells_pe_unusable/ because step 6 cannot parse a paired-end step-5')
+        emit("BED -- bedtools bamtobed's '/1','/2' mate suffix lands on the end of")
+        emit('the nM value, and step 6 line 97 int()s it. Rates are in')
+        emit('logs/nm_contract.txt; the mechanism is in NOUMI_PATH.md.')
+        emit('So this path is SINGLE-END ONLY, and the comparison below is not')
+        emit('available. That is a measured result, not a missing measurement.')
     if len(cols) == 2:
         a, b = cols
         da = set(tot_r.index[tot_r[a] > 0])
@@ -233,8 +245,16 @@ def main():
             emit('  %s:' % cc)
             for i, v in top.items():
                 emit('      %-58s %10d' % (str(i)[:58], int(v)))
+    elif len(cols) == 1:
+        emit()
+        emit('One column (%s), as expected once the PE arm is excluded.' % cols[0])
+        top = tot_r[cols[0]].sort_values(ascending=False).head(15)
+        emit('top 15 genes by reads:')
+        for i, v in top.items():
+            emit('    %-58s %10d' % (str(i)[:58], int(v)))
     else:
-        warn.append('expected 2 columns (pe, se), found %d: %s' % (len(cols), cols))
+        warn.append('expected 1 column (se) or 2 (se+pe), found %d: %s'
+                    % (len(cols), cols))
 
     # -----------------------------------------------------------------------
     section('VERDICT')

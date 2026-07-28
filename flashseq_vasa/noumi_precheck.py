@@ -16,7 +16,7 @@ would break.
 
 It is READ-ONLY. It writes one report file and touches nothing else.
 
-It answers five questions:
+It answers six questions:
 
   1. READ NAMES. `get_UMI(..., 'smartseq_noUMI')` builds a dict out of the
      read name before throwing the result away. Do FLASH-seq read names
@@ -32,7 +32,14 @@ It answers five questions:
      separator step 6 uses to build combination names.
   4. NO-UMI SEMANTICS. What the counts MEAN once every read is filed under the
      single literal UMI 'A'. Demonstrated numerically, not asserted.
-  5. FILTER SENSITIVITY. `ncells = max(5, round(0.01*ncols))` at the library
+  5. STEP-5 BED CONTRACT. Can step 6 `int()` the nM field of every row of a
+     real step-5 BED? This check was ADDED after the first dry run, where it
+     is exactly what broke: on paired-end input `bedtools bamtobed` appends the
+     '/1','/2' mate suffix, which lands on the end of the nM value, and step 6
+     dies with `ValueError: invalid literal for int() with base 10: '0/2'`.
+     Give it the BEDs and it reports the rate rather than discovering it in
+     an hour-long job.
+  6. FILTER SENSITIVITY. `ncells = max(5, round(0.01*ncols))` at the library
      counts this comparison will actually use (1 and 10), not 384.
 
 PROVENANCE OF THE HELPERS BELOW
@@ -72,12 +79,14 @@ execute.
 
 Usage:
     noumi_precheck.py <R1.fastq.gz> <annotation.bed> <report.txt>
-                      [stride] [libid] [maxnames]
+                      [stride] [libid] [maxnames] [step5.bed.gz ...]
 
     stride    sample every Nth read record over the WHOLE file (default 64,
               matching FS_STRIDE). The head of a fastq is not a sample of it.
     libid     library id used to build the synthetic SM tag (default ZHA8833A9)
     maxnames  cap on kept read names (default 50000)
+    step5     any number of *_genes.bed.gz from step 5, checked in section 5.
+              Optional: without them sections 1-4 and 6 still run.
 """
 import sys
 import os
@@ -615,7 +624,62 @@ def main():
     emit('    be filtered on ReadCounts, and only ReadCounts.')
 
     # -----------------------------------------------------------------------
-    section('5. FILTER SENSITIVITY -- ncells = max(5, round(0.01*ncols))')
+    section('5. STEP-5 BED CONTRACT -- the nM field step 6 must int()')
+    # ADDED after the first dry run: this is the check that would have caught
+    # the paired-end break. 2pickle line 97 does
+    #     int(x['Info'].rsplit(';nM:')[1].rsplit(';jS:')[0])
+    # on column 7 of the step-5 BED. `bedtools bamtobed` appends '/1' or '/2'
+    # to the read name of a PAIRED-END mate, and deal_with_*.sh appends
+    # ';CG:<cigar>;nM:<n>' to the QNAME BEFORE bamtobed runs -- so the mate
+    # suffix lands on the END of the nM value ('nM:0/2') and int() raises.
+    beds = sys.argv[7:] if len(sys.argv) > 7 else []
+    if not beds:
+        emit('no step-5 BED passed (argv[7:]) -- skipping.')
+        emit('Pass the *_genes.bed.gz files to check this contract on real rows.')
+    for bp in beds:
+        emit()
+        emit('BED: %s' % os.path.basename(bp))
+        if not os.path.exists(bp):
+            emit('  MISSING -- skipped')
+            continue
+        n = 0
+        bad = 0
+        firstbad = None
+        firstok = None
+        opener = gzip.open if bp.endswith('.gz') else open
+        with opener(bp, 'rt') as fh:
+            for line in fh:
+                f = line.rstrip('\n').split('\t')
+                if len(f) < 7:
+                    continue
+                n += 1
+                info = f[6]
+                try:
+                    int(info.rsplit(';nM:')[1].rsplit(';jS:')[0])
+                    if firstok is None:
+                        firstok = info
+                except Exception as e:
+                    bad += 1
+                    if firstbad is None:
+                        firstbad = (info, '%s: %s' % (type(e).__name__, e))
+        emit('  rows                       : %d' % n)
+        emit('  rows whose nM step 6 CANNOT int(): %d  (%.2f%%)'
+             % (bad, 100.0 * bad / max(1, n)))
+        if firstok:
+            emit('  first parseable Info       : %r' % firstok)
+        if firstbad:
+            emit('  first UNPARSEABLE Info     : %r' % firstbad[0])
+            emit('  the exception step 6 raises: %s' % firstbad[1])
+            fail.append('%s: %d/%d rows (%.1f%%) have an nM field step 6 cannot '
+                        'parse -- step 6 dies with ValueError on the first one. '
+                        'This is the bedtools bamtobed /1,/2 mate suffix; it '
+                        'means PAIRED-END input is not supported by this path.'
+                        % (os.path.basename(bp), bad, n, 100.0 * bad / max(1, n)))
+        else:
+            emit('  OK: every row satisfies the nM contract')
+
+    # -----------------------------------------------------------------------
+    section('6. FILTER SENSITIVITY -- ncells = max(5, round(0.01*ncols))')
     emit('step 7 line ~223, reached only when argv[4] == "y":')
     emit('    ncells = max(5, round(0.01*len(cntdf.columns))); nreads = 1')
     emit()

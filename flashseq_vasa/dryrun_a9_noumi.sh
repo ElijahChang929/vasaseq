@@ -21,12 +21,12 @@
 #    of ribosomal reads (measured, code/flashseq/README.md). Passing y would
 #    halve every biotype figure. The VASA side runs with y.
 #
-# 3. PE AND SE, BOTH. In PE a fragment is two alignment records sharing one
-#    QNAME; both mates carry the same NH so both survive the singlemapper
-#    filter, and step 6 groups the BED by the Name column (= QNAME), so the two
-#    mates should collapse into ONE assignment. That is an assumption about
-#    upstream code written for single-end reads, so the SE arm is run as the
-#    control and the two columns are compared directly.
+# 3. PE AND SE, BOTH -- and PE DOES NOT WORK. Both arms are mapped and
+#    assigned, because that is how the paired-end question gets answered rather
+#    than assumed. The answer, measured: step 6 CANNOT consume a paired-end
+#    step-5 BED (see step C2 below for the mechanism and the rates). So only the
+#    SE arm reaches steps 6-7, the PE arm's outputs are quarantined rather than
+#    deleted, and its BAM/BED are still on disk as the evidence.
 #
 # 4. NO SHARED MEMORY. Upstream map_star.sh passes no --genomeLoad, so STAR
 #    defaults to NoSharedMemory; that is kept. It costs a second index load but
@@ -40,6 +40,13 @@
 #
 # 6. filt_unigenes = n. At ncols=2 the step-7 filter is max(5, round(0.01*2))
 #    = 5 columns out of 2, which no gene can pass.
+#
+# 7. NO TRIMMING, DELIBERATELY. This run maps the raw FASTQ so that what is
+#    proven is the smartseq_noUMI path itself and not a trimming recipe. It
+#    costs mapping rate: the first PE arm returned 46.16% "unmapped: too short",
+#    consistent with the 55.1% adapter read-through measured over the whole
+#    ZHA8833A1 library (code/flashseq/README.md). The real ten-library run
+#    should trim first -- see NOUMI_PATH.md, changes needed.
 #
 # Usage: dryrun_a9_noumi.sh [outdir] [stride]
 ###############################################################################
@@ -72,6 +79,8 @@ export MODULEPATH=$EBROOT/../modules/all
 module load STAR/2.7.7a-GCC-10.2.0 SAMtools/1.11-GCC-10.2.0 BEDTools/2.30.0-GCC-11.2.0
 source $EBROOT/Anaconda3/2024.10-1/etc/profile.d/conda.sh
 conda activate $CONDA_ENV
+
+PY_PRECHECK=python           # the vasa env's python, activated just above
 
 say() { echo "[$(date +%H:%M:%S)] $*"; }
 
@@ -140,7 +149,10 @@ run_arm() {
     local nsgl nmlt nq m1 m2
     nsgl=$(zcat "$sgl" | wc -l); nmlt=$(zcat "$mlt" | wc -l)
     nq=$(zcat "$sgl" | cut -f4 | sort -u | wc -l)
-    m1=$("$P2SAMTOOLS" view -c -f 64 "$bam"); m2=$("$P2SAMTOOLS" view -c -f 128 "$bam")
+    # NB "$P2SAMTOOLS" is a DIRECTORY, as in every upstream script -- the
+    # binary is "$P2SAMTOOLS"/samtools. Omitting it fails with "Is a directory".
+    m1=$("$P2SAMTOOLS"/samtools view -c -f 64 "$bam")
+    m2=$("$P2SAMTOOLS"/samtools view -c -f 128 "$bam")
     say "      single BED rows=$nsgl  multi BED rows=$nmlt  distinct QNAMEs(single)=$nq"
     say "      BAM records flagged mate1=$m1 mate2=$m2"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$arm" "$nsgl" "$nmlt" "$nq" "$m1" "$m2" \
@@ -153,9 +165,38 @@ run_arm pe "$SUB1" "$SUB2"
 run_arm se "$SUB1"
 
 ###############################################################################
+say "step C2: the nM contract, on the real step-5 BEDs of both arms"
+###############################################################################
+# MEASURED FINDING, first dry run (job 5b727925): step 6 line 97 does
+#   int(x['Info'].rsplit(';nM:')[1].rsplit(';jS:')[0])
+# and `bedtools bamtobed` appends '/1' or '/2' to the read name of a paired-end
+# mate. deal_with_*.sh appends ';CG:<cigar>;nM:<n>' to the QNAME BEFORE
+# bamtobed runs, so the mate suffix lands on the END of the nM value: 'nM:0/2'.
+# Measured: 1,033,528 of 1,033,528 PE rows (100%) unparseable, 0 of 534,978 SE
+# rows. Step 6 therefore dies on the FIRST paired-end row with
+#   ValueError: invalid literal for int() with base 10: '0/2'
+# This is upstream behaviour, not a calling error: the path is single-end only.
+$PY_PRECHECK "$W/code/flashseq_vasa/noumi_precheck.py" \
+    "$SUB1" "$REF_BED" "$OUTDIR/logs/nm_contract.txt" 100000 "$LIB" 200 \
+    "$CELLDIR/${LIB}pe_cbc_noumi_E99_Aligned.out.singlemappers_genes.bed.gz" \
+    "$CELLDIR/${LIB}se_cbc_noumi_E99_Aligned.out.singlemappers_genes.bed.gz" \
+    > "$OUTDIR/logs/nm_contract_stdout.txt" 2>&1 || true
+sed -n '/5. STEP-5 BED CONTRACT/,/6. FILTER SENSITIVITY/p' \
+    "$OUTDIR/logs/nm_contract.txt" | sed 's/^/      /'
+
+###############################################################################
 say "step D: step 6 -- pickle, protocol=smartseq_noUMI, cellid from filename"
 ###############################################################################
-# Both arms are in cells/, so step 6 makes them two columns of one structure.
+# Step 6 globs cells/*.singlemappers_genes.bed.gz, so the PE BEDs must be OUT
+# of that folder or step 6 dies on them (see step C2). They are MOVED to
+# cells_pe_unusable/, not deleted: the evidence stays on disk.
+mkdir -p "$OUTDIR/cells_pe_unusable"
+for f in "$CELLDIR/${LIB}pe_"*; do
+    [ -e "$f" ] && mv "$f" "$OUTDIR/cells_pe_unusable/"
+done
+say "  quarantined PE outputs: $(find "$OUTDIR/cells_pe_unusable" -type f | wc -l) files"
+say "  step 6 will see: $(find "$CELLDIR" -name '*.singlemappers_genes.bed.gz' | wc -l) singlemapper BED(s)"
+
 rm -f "$OUTDIR/${SAMPLE}.pickle" "$OUTDIR/${SAMPLE}.pickle.gz" "$OUTDIR/${SAMPLE}dict.pickle"
 ( cd "$OUTDIR" && "$VASA_SCRIPTS"/countTables_2pickle_cellsSpliced.py \
     "cells" "$SAMPLE" smartseq_noUMI f )

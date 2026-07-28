@@ -1,0 +1,138 @@
+# flashseq_vasa/ -- is the comparison actually a comparison?
+
+This directory holds the comparability audit run BEFORE any VASA-vs-FLASH-seq
+comparison is built, plus the scripts that produced every number in it. Nothing
+here reimplements a measurement that already exists; where a number was already
+measured (`res/flashseq/rrna_bwa.tsv`, `data/PM26037/out/logs/step3_report.txt`,
+`data/PM26037/out/analysis/`) it is read, not recomputed.
+
+    00_vasa_ribo_strand.sh   the one measurement that was MISSING (see below)
+    01_read_vs_molecule.py   VASA's own read:UFI ratio, per cell and per biotype
+    provenance.tsv           one row per shared component, and whether it matches
+    read_vs_molecule.tsv     the per-cell / per-biotype ratios
+    vasa_strand_check.tsv    stranded=y vs n over VASA's 16 surviving all-ribo BAMs
+
+## Verdict: PARTIAL. One blocker, and it is not the one that was expected.
+
+Twelve of eighteen components are byte-identical between the two runs. The rRNA
+leg really is one measurement: the same `unique_rRNA_mouse.v2.fa`
+(md5 `177913504bea6d1d0b992c018f84383b`, one file, one inode -- not two copies),
+the same bwa index sidecars, the same `riboread-selection.py`
+(md5 `f09e4ac4844ed181bf6adfee628c2183`), the same `ribo-bwamem.sh`, the same bwa
+0.7.17-r1188 and samtools 1.11, the same conda prefix. Both runs postdate the
+2026-07-26 20:34 reference rebuild, so neither used v1.
+
+`riboread-selection.py` has an mtime (2026-07-27 09:57) that falls BETWEEN the
+VASA run and the FLASH-seq run, which looks alarming and is not: its git blob is
+`1ca5ff1c0fc4e6fcfddea887b6d018bdedeeaf89` in the working tree, in HEAD, and in
+8bee6f6 (2026-07-16), and `git diff HEAD` is empty. No commit touches either
+ribo script between the two runs. The mtime is cosmetic.
+
+**The STAR index is ONE index, not two.** This was the expected blocker and it
+is not one. `star_index_151_r116/genomeParameters.txt` is nf-core's own
+`genomeGenerate` command line (`/opt/conda/bin/STAR-avx2 ... --sjdbGTFfile
+Mus_musculus.GRCm39.116.filtered.gtf --sjdbOverhang 150`), and VASA's own STAR
+`Log.txt` names that directory as `genomeDir`. nf-core built it, it was moved
+into the reference tree, and VASA then used it. 78,348 genes, 481,956
+transcripts, 61 contigs, 562,855 GTF junctions, versionGenome 2.7.4a. Biotype
+assignment cannot diverge from a difference that does not exist.
+
+## The blocker: stranded=y/n is NOT the symmetric factor of two the README implies
+
+`05_rrna_bwa.sh` was careful here -- it ran FLASH-seq with `n` and re-selected
+the SAME merged BAM with `y`, so its side is measured. The forward strand carries
+**49.1-50.5 %** of FLASH-seq ribosomal reads and `y/n = 0.491-0.509` across all
+ten libraries: genuinely unstranded, and `n` is the right flag. That part holds.
+
+What had never been computed is the mirror image. VASA only ever ran `y`, so
+"what would VASA say under `n`" was an assumption. All 16 `.nsorted.all-ribo.bam`
+survive, so it is measurable. `00_vasa_ribo_strand.sh` counts the two predicates
+`riboread-selection.py` itself uses over the same name-sorted BAM, and
+reproduces its logged counts exactly (`ribo_stranded_y == log_nmapped_sum` for
+all 16 barcodes, and `n_groups == log_nreads`; that equality is the script's own
+self-check).
+
+    VASA, stranded=y  21.39 %  (19,282,729 / 90,137,383)   <- the published figure
+    VASA, stranded=n  28.10 %  (25,328,057 / 90,137,383)   <- never computed before
+
+The forward strand carries **76.1 %** of VASA's ribosomal reads (57.7-83.8 %
+across the 12 real cells), not ~50 %. So `y` costs VASA 23.9 % of its ribosomal
+reads, where the same flag costs FLASH-seq 50.6 %. **The two published
+percentages are not on the same footing**, and the ratio between them depends on
+a flag choice by roughly a factor of two:
+
+| both sides on | VASA | FLASH-seq (pooled, trimmed) | ratio |
+|---|---|---|---|
+| as published (VASA `y`, FS `n`) | 21.39 % | 4.78 % | **4.5x** |
+| both `n` | 28.10 % | 4.78 % | **5.9x** |
+| both `y` | 21.39 % | 2.39 % | **9.0x** |
+
+The published 4.3x is arithmetically sound -- it is pooled-against-pooled, which
+is the right denominator against VASA's own `ALL` row (recomputing it gives
+4.48x; the 0.2 is rounding in the transcribed VASA composition, not an error).
+It is the *flag pairing* that is mixed, not the arithmetic.
+
+**Recommendation, not a decision:** report `both n` (5.9x). `n` counts every
+read that aligns to rRNA regardless of orientation, which is the same question
+on both protocols, and it does not require VASA to be perfectly stranded --
+which, at 76.1 % forward, it measurably is not. The 76.1 % is itself worth a
+look: for a stranded protocol it is lower than expected, and commit a9d0c46
+already documented one mechanism (reverse-strand reads written flipped). Whether
+that is the same 23.9 % is not established here. Quote whichever pairing you
+choose, but quote the flag with the number, and do not mix them.
+
+## Read-vs-molecule: 2.6x, and it is expression-dependent
+
+VASA counts molecules; `smartseq_noUMI` will count reads. Measured on the 12 real
+cells (222,412 x 12 total tables):
+
+* **read:UFI = 2.13-2.96 per cell, median 2.57**, pooled 2.69. Cell 002 lowest,
+  011 highest. read:transcript median 2.42; UFI:transcript 0.942 (the collision
+  correction adds ~6 %).
+* **Not uniform across biotypes.** Spearman(UFIs, read:UFI) = **+0.498** over
+  35,758 entries with >=10 UFIs; by expression decile the ratio climbs
+  **1.69 -> 2.91 (1.73x)**. Highly-expressed entries are more duplicated, as
+  expected.
+* **Direction of the bias.** Because duplication rises with expression, the
+  abundant classes take a LARGER share of reads than of molecules, and the rare
+  classes a smaller one. ProteinCoding is 82.65 % of reads vs 81.73 % of UFIs
+  (+0.91 points, ratio 1.011); lncRNA is 6.97 % vs 7.91 % (-0.94, ratio 0.881);
+  snRNA 1.333x, MiscRna 2.132x, the residual rRNA biotype 1.780x. So quoting
+  VASA UFI-shares against FLASH-seq read-shares **understates VASA's abundant
+  classes by ~1 point and overstates its rare classes by up to ~19 % relative**.
+  That is small for protein-coding and large for the small-RNA classes -- which
+  are exactly the classes a total-RNA-vs-poly-A comparison is about.
+* **Gene detection is the exception: it is immune.** Genes detected on reads and
+  on UFIs are **identical in all 12 cells** (difference 0, not merely small):
+  a gene seen at all is seen on >=1 read and >=1 UFI. 225,716 cell-gene entries
+  sit at exactly 1 read, 274,258 at exactly 1 UFI.
+
+## Which VASA column each comparison must use
+
+| comparison | column | why |
+|---|---|---|
+| (i) rRNA fraction | **neither** -- use the bwa stage | The rRNA % lives in step 3, upstream of any counting. Do NOT use the rRNA *biotype* rows: they are the residual that survived depletion (0.506 % of reads / 0.304 % of UFIs), a different denominator, and 87.1 % of it is one entry (`ENSMUSG00000119584_Rn18s.rs5_rRNA`). Report with the stranded flag stated. |
+| (ii) biotype composition | **ReadCounts** (headline) + **TranscriptCounts** (VASA's biology) | Like against like: both sides reads. Carrying both is not hedging -- the gap between them IS the measured 1.011x/0.881x bias, and it is the honest way to show that "% protein-coding" differs between currencies. |
+| (iii) gene detection | **UFICounts** or ReadCounts -- measurably identical | Difference is 0 in all 12 cells, so the choice is free. Use UFICounts for consistency with VASA's own tables. Depth-match instead: that is the real confound (VASA spans 6.2x of depth and 32,591-65,137 genes). |
+
+TranscriptCounts is the right column for VASA's own biology (it is UFIs with the
+binomial collision correction, +5.8 % median) but it is the WRONG comparator
+against FLASH-seq: it corrects for a saturation FLASH-seq has no equivalent of.
+
+## Two further cautions carried forward
+
+The annotation is the same Ensembl 116 release on both sides (source GTF
+md5 `0f9ab91d5ed1be2c7538589d6950f3af`) but not the same OBJECT: VASA uses
+`Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed` (719,409 rows, one entry
+per gene, merged-exon union + explicit introns + 1,137 GtRNAdb tRNA rows), while
+nf-core used a per-transcript filtered GTF. Biotype labels agree because both
+read `gene_biotype` from the same GTF. This only bites if nf-core/RSEM is used as
+the comparator, which decision 1 already rules out.
+
+`results/genome/Mus_musculus.GRCm39.116.filtered.gtf` as published is a
+**truncated copy** -- exactly 167,837,696 bytes (2561 x 64 KiB), last line cut
+mid-attribute, chromosome 1 only, 4,742 genes. The run itself was NOT affected:
+RSEM's merged gene matrix has all 78,348 genes, `genome.transcripts.fa` and the
+filtered BED both have 481,956 transcripts across 38 contigs, and the STAR index
+has 78,348 genes. The truncation is in the copy on disk, not in what was
+computed. Worth fixing so nobody rebuilds from it.

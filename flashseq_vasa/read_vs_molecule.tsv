@@ -1,0 +1,118 @@
+level	key	biotype	reads	UFIs	transcripts	read_per_UFI	read_per_transcript	pct_of_reads__or__rRNApct_strandedY	pct_of_UFIs__or__rRNApct_strandedN	pct_of_transcripts__or__fwd_share_of_ribo	share_ratio_read_over_UFI__or__n_over_y	genes_det_reads	genes_det_UFIs
+cell	002	ALL	1.04942e+06	491970	512443	2.1331	2.04788					32591	32591
+cell	003	ALL	2.0062e+06	785093	826506	2.55537	2.42733					42280	42280
+cell	004	ALL	1.45231e+06	671862	701119	2.16163	2.07142					40965	40965
+cell	005	ALL	1.25369e+06	580623	606628	2.15921	2.06665					35724	35724
+cell	006	ALL	1.96934e+06	805351	847933	2.44533	2.32252					44027	44027
+cell	007	ALL	4.3748e+06	1.55827e+06	1.68845e+06	2.80747	2.59102					57353	57353
+cell	008	ALL	2.47105e+06	1.00364e+06	1.06313e+06	2.46208	2.32432					48114	48114
+cell	009	ALL	3.3966e+06	1.31875e+06	1.40373e+06	2.57563	2.4197					53669	53669
+cell	010	ALL	6.4835e+06	2.23545e+06	2.49391e+06	2.9003	2.59973					65137	65137
+cell	011	ALL	6.51273e+06	2.19895e+06	2.44911e+06	2.96174	2.65922					62834	62834
+cell	012	ALL	5.33555e+06	1.88791e+06	2.07601e+06	2.82616	2.5701					57833	57833
+cell	013	ALL	4.61443e+06	1.67837e+06	1.85102e+06	2.74935	2.49291					55023	55023
+biotype	ProteinCoding	ProteinCoding	3.38185e+07	1.24369e+07	1.31743e+07	2.71921	2.567	82.646	81.7342	79.7476	1.01116		
+biotype	lncRNA	lncRNA	2.852e+06	1.20365e+06	1.3186e+06	2.36945	2.1629	6.96975	7.91031	7.98182	0.881096		
+biotype	snRNA	snRNA	1.21593e+06	339234	500068	3.58433	2.43153	2.9715	2.22942	3.02705	1.33286		
+biotype	ProteinCoding-lncRNA	ProteinCoding-lncRNA	796157	358205	462784	2.22263	1.72036	1.94566	2.35409	2.80136	0.8265		
+biotype	snoRNA	snoRNA	624165	254420	286117	2.45329	2.1815	1.52534	1.67203	1.73195	0.912271		
+biotype	MiscRna	MiscRna	392759	68521	148462	5.73195	2.64553	0.95983	0.450315	0.898678	2.13147		
+biotype	ProcessedPseudogene	ProcessedPseudogene	286133	142814	145186	2.00354	1.9708	0.699256	0.938562	0.878853	0.745029		
+biotype	ProcessedPseudogene-ProteinCoding	ProcessedPseudogene-ProteinCoding	202433	104696	106883	1.93353	1.89397	0.494709	0.688054	0.64699	0.718997		
+biotype	rRNA	rRNA	199047	41592	97907.7	4.7857	2.03301	0.486434	0.273339	0.592662	1.7796		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene	66985	35175	35714.3	1.90434	1.87558	0.163699	0.231167	0.216188	0.70814		
+biotype	ribozyme	ribozyme	64358	19866	26507.5	3.23961	2.42792	0.157279	0.130558	0.160457	1.20467		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-lncRNA	59659	35960	36171.8	1.65904	1.64932	0.145796	0.236326	0.218958	0.616925		
+biotype	TranscribedProcessedPseudogene	TranscribedProcessedPseudogene	50964	22424	22828.2	2.27274	2.2325	0.124547	0.147369	0.138185	0.845135		
+biotype	ProteinCoding-TranscribedProcessedPseudogene-lncRNA	ProteinCoding-TranscribedProcessedPseudogene-lncRNA	38520	19121	19604.3	2.01454	1.96487	0.0941357	0.125662	0.11867	0.74912		
+biotype	ProteinCoding-UnprocessedPseudogene	ProteinCoding-UnprocessedPseudogene	38284	15700	18043	2.43847	2.12183	0.093559	0.103179	0.109219	0.906762		
+biotype	scaRNA	scaRNA	31578	13524	14147.5	2.33496	2.23206	0.0771708	0.0888787	0.0856385	0.868271		
+biotype	miRNA	miRNA	31276	20894	22169.2	1.49689	1.41079	0.0764327	0.137314	0.134196	0.556629		
+biotype	ProcessedPseudogene-TranscribedProcessedPseudogene-lncRNA	ProcessedPseudogene-TranscribedProcessedPseudogene-lncRNA	28431	15403	15583.4	1.84581	1.82444	0.0694801	0.101227	0.0943307	0.686377		
+biotype	ProcessedPseudogene-TranscribedProcessedPseudogene	ProcessedPseudogene-TranscribedProcessedPseudogene	14741	7836	7900.31	1.88119	1.86588	0.0360243	0.0514976	0.0478228	0.699533		
+biotype	ProteinCoding-TranscribedProcessedPseudogene	ProteinCoding-TranscribedProcessedPseudogene	14391	7722	7876.47	1.86364	1.82709	0.0351689	0.0507484	0.0476784	0.693006		
+biotype	ProteinCoding-TranscribedUnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedUnprocessedPseudogene-lncRNA	12521	7510	7569.86	1.66724	1.65406	0.030599	0.0493551	0.0458224	0.619976		
+biotype	ProteinCoding-TranscribedUnitaryPseudogene-lncRNA	ProteinCoding-TranscribedUnitaryPseudogene-lncRNA	11375	5826	5891.75	1.95245	1.93066	0.0277984	0.038288	0.0356644	0.726034		
+biotype	UnitaryPseudogene	UnitaryPseudogene	10282	4785	4930.81	2.1488	2.08525	0.0251273	0.0314466	0.0298476	0.799046		
+biotype	TranscribedUnprocessedPseudogene	TranscribedUnprocessedPseudogene	9598	4916	4946.98	1.9524	1.94017	0.0234557	0.0323076	0.0299454	0.726014		
+biotype	MtRrna	MtRrna	8163	4723	4886.05	1.72835	1.67068	0.0199489	0.0310392	0.0295766	0.642699		
+biotype	ProteinCoding-TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-lncRNA	6238	3291	3321.24	1.89547	1.87822	0.0152445	0.0216282	0.0201044	0.704845		
+biotype	UnprocessedPseudogene	UnprocessedPseudogene	6181	3921	3936.87	1.57638	1.57003	0.0151052	0.0257685	0.0238309	0.586189		
+biotype	TranscribedUnprocessedPseudogene-lncRNA	TranscribedUnprocessedPseudogene-lncRNA	5240	2835	2837.27	1.84832	1.84685	0.0128056	0.0186314	0.0171747	0.687312		
+biotype	TranscribedProcessedPseudogene-lncRNA	TranscribedProcessedPseudogene-lncRNA	4869	2713	2722.62	1.79469	1.78835	0.0118989	0.0178296	0.0164808	0.667369		
+biotype	ProcessedPseudogene-ProteinCoding-lncRNA	ProcessedPseudogene-ProteinCoding-lncRNA	2332	1563	1565.44	1.492	1.48967	0.00569897	0.0102719	0.00947606	0.554811		
+biotype	ProteinCoding-UnitaryPseudogene-lncRNA	ProteinCoding-UnitaryPseudogene-lncRNA	1872	1071	1073.66	1.7479	1.74358	0.00457482	0.00703853	0.00649913	0.649968		
+biotype	ProteinCoding-TranscribedUnitaryPseudogene	ProteinCoding-TranscribedUnitaryPseudogene	1822	988	989.839	1.84413	1.8407	0.00445263	0.00649306	0.00599177	0.685752		
+biotype	MtTrna	MtTrna	1724	1304	1305.9	1.32209	1.32016	0.00421314	0.00856979	0.00790496	0.491627		
+biotype	TranscribedUnitaryPseudogene	TranscribedUnitaryPseudogene	1688	1078	1080.22	1.56586	1.56265	0.00412516	0.00708453	0.00653884	0.582277		
+biotype	ProcessedPseudogene-ProteinCoding-UnprocessedPseudogene	ProcessedPseudogene-ProteinCoding-UnprocessedPseudogene	1608	977	980.032	1.64585	1.64076	0.00392965	0.00642077	0.0059324	0.612022		
+biotype	ProteinCoding-UnprocessedPseudogene-lncRNA	ProteinCoding-UnprocessedPseudogene-lncRNA	1171	806	806.328	1.45285	1.45226	0.00286171	0.00529697	0.00488092	0.540254		
+biotype	ProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	ProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	859	383	383.535	2.24282	2.23969	0.00209924	0.00251705	0.00232164	0.834008		
+biotype	ProcessedPseudogene-lncRNA	ProcessedPseudogene-lncRNA	818	511	511.267	1.60078	1.59995	0.00199904	0.00335825	0.00309484	0.595262		
+biotype	TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	549	250	250.292	2.196	2.19344	0.00134165	0.00164298	0.00151508	0.816598		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene	548	396	396.13	1.38384	1.38338	0.00133921	0.00260248	0.00239788	0.51459		
+biotype	ProteinCoding-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	415	263	263.033	1.57795	1.57775	0.00101418	0.00172842	0.00159221	0.58677		
+biotype	TranscribedUnitaryPseudogene-lncRNA	TranscribedUnitaryPseudogene-lncRNA	414	328	328.729	1.2622	1.25939	0.00101174	0.00215559	0.00198989	0.469356		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-lncRNA	358	282	282.107	1.2695	1.26902	0.000874886	0.00185328	0.00170767	0.472074		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	357	265	265.034	1.34717	1.347	0.000872442	0.00174156	0.00160432	0.500954		
+biotype	ProteinCoding-UnitaryPseudogene	ProteinCoding-UnitaryPseudogene	350	298	298.152	1.1745	1.1739	0.000855335	0.00195843	0.0018048	0.436745		
+biotype	ProteinCoding-TranscribedUnprocessedPseudogene	ProteinCoding-TranscribedUnprocessedPseudogene	327	199	199.007	1.64322	1.64316	0.000799127	0.00130781	0.00120464	0.611041		
+biotype	UnprocessedPseudogene-lncRNA	UnprocessedPseudogene-lncRNA	307	227	227.066	1.35242	1.35203	0.000750251	0.00149183	0.00137449	0.502908		
+biotype	TranscribedUnprocessedPseudogene-UnprocessedPseudogene	TranscribedUnprocessedPseudogene-UnprocessedPseudogene	271	134	134.007	2.02239	2.02228	0.000662274	0.000880637	0.000811181	0.752039		
+biotype	UnitaryPseudogene-lncRNA	UnitaryPseudogene-lncRNA	178	133	133.023	1.33835	1.33811	0.000434999	0.000874065	0.000805224	0.497673		
+biotype	ProteinCoding-TranscribedUnprocessedPseudogene-UnprocessedPseudogene	ProteinCoding-TranscribedUnprocessedPseudogene-UnprocessedPseudogene	94	64	64.0012	1.46875	1.46872	0.000229719	0.000420603	0.000387417	0.546165		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedUnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedUnprocessedPseudogene-lncRNA	90	61	61.0037	1.47541	1.47532	0.000219943	0.000400887	0.000369272	0.548641		
+biotype	ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	85	53	53.0015	1.60377	1.60373	0.000207724	0.000348312	0.000320832	0.596374		
+biotype	TranslatedUnprocessedPseudogene	TranslatedUnprocessedPseudogene	76	44	44.0276	1.72727	1.72619	0.00018573	0.000289165	0.000266511	0.642298		
+biotype	TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	65	32	32.002	2.03125	2.03113	0.000158848	0.000210301	0.000193717	0.755334		
+biotype	ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	63	37	37.0027	1.7027	1.70258	0.00015396	0.000243161	0.000223987	0.633162		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	60	44	44.0024	1.36364	1.36356	0.000146629	0.000289165	0.000266359	0.507078		
+biotype	ProcessedPseudogene-TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	45	36	36.0193	1.25	1.24933	0.000109972	0.000236589	0.000218035	0.464821		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedUnitaryPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedUnitaryPseudogene-lncRNA	44	33	33.0046	1.33333	1.33315	0.000107528	0.000216873	0.000199786	0.495809		
+biotype	TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	TranscribedProcessedPseudogene-UnprocessedPseudogene-lncRNA	36	25	25.0093	1.44	1.43947	8.79773e-05	0.000164298	0.000151388	0.535474		
+biotype	ProcessedPseudogene-UnprocessedPseudogene	ProcessedPseudogene-UnprocessedPseudogene	28	18	18	1.55556	1.55556	6.84268e-05	0.000118295	0.000108959	0.578444		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	25	20	20.0044	1.25	1.24973	6.10954e-05	0.000131438	0.000121092	0.464821		
+biotype	IgVGene	IgVGene	23	21	21.001	1.09524	1.09519	5.62077e-05	0.00013801	0.000127125	0.407272		
+biotype	IgVPseudogene	IgVPseudogene	21	16	16	1.3125	1.3125	5.13201e-05	0.000105151	9.68524e-05	0.488062		
+biotype	TrVGene	TrVGene	20	18	18.0005	1.11111	1.11108	4.88763e-05	0.000118295	0.000108962	0.413174		
+biotype	ProcessedPseudogene-TranscribedUnprocessedPseudogene	ProcessedPseudogene-TranscribedUnprocessedPseudogene	19	11	11.0005	1.72727	1.7272	4.64325e-05	7.22911e-05	6.6589e-05	0.642298		
+biotype	IgCGene	IgCGene	16	16	16.0007	1	0.999954	3.9101e-05	0.000105151	9.68568e-05	0.371857		
+biotype	ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	15	10	10	1.5	1.5	3.66572e-05	6.57192e-05	6.05327e-05	0.557785		
+biotype	TrVPseudogene	TrVPseudogene	14	8	8.00024	1.75	1.74995	3.42134e-05	5.25754e-05	4.84277e-05	0.65075		
+biotype	ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene	ProteinCoding-TranscribedProcessedPseudogene-UnprocessedPseudogene	13	7	7.00024	1.85714	1.85708	3.17696e-05	4.60034e-05	4.23744e-05	0.690591		
+biotype	ProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene	ProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene	8	4	4.00024	2	1.99988	1.95505e-05	2.62877e-05	2.42146e-05	0.743714		
+biotype	pseudogene	pseudogene	8	6	6.00024	1.33333	1.33328	1.95505e-05	3.94315e-05	3.63211e-05	0.495809		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	7	7	7	1	1	1.71067e-05	4.60034e-05	4.23729e-05	0.371857		
+biotype	TrCGene	TrCGene	6	6	6	1	1	1.46629e-05	3.94315e-05	3.63196e-05	0.371857		
+biotype	ProteinCoding-TranscribedUnitaryPseudogene-UnitaryPseudogene-lncRNA	ProteinCoding-TranscribedUnitaryPseudogene-UnitaryPseudogene-lncRNA	6	3	3	2	2	1.46629e-05	1.97158e-05	1.81598e-05	0.743714		
+biotype	TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene	TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene	5	1	1	5	5	1.22191e-05	6.57192e-06	6.05327e-06	1.85928		
+biotype	ProcessedPseudogene-ProteinCoding-UnitaryPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-UnitaryPseudogene-lncRNA	5	3	3	1.66667	1.66667	1.22191e-05	1.97158e-05	1.81598e-05	0.619762		
+biotype	ProcessedPseudogene-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	4	3	3.00024	1.33333	1.33322	9.77526e-06	1.97158e-05	1.81613e-05	0.495809		
+biotype	ProteinCoding-TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProteinCoding-TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	4	2	2	2	2	9.77526e-06	1.31438e-05	1.21065e-05	0.743714		
+biotype	TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	4	1	1	4	4	9.77526e-06	6.57192e-06	6.05327e-06	1.48743		
+biotype	ProteinCoding-TranscribedUnprocessedPseudogene-UnitaryPseudogene-lncRNA	ProteinCoding-TranscribedUnprocessedPseudogene-UnitaryPseudogene-lncRNA	4	4	4	1	1	9.77526e-06	2.62877e-05	2.42131e-05	0.371857		
+biotype	ProcessedPseudogene-ProteinCoding-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-ProteinCoding-UnprocessedPseudogene-lncRNA	3	3	3	1	1	7.33144e-06	1.97158e-05	1.81598e-05	0.371857		
+biotype	ProteinCoding-TrCGene-lncRNA	ProteinCoding-TrCGene-lncRNA	2	2	2	1	1	4.88763e-06	1.31438e-05	1.21065e-05	0.371857		
+biotype	ProcessedPseudogene-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	ProcessedPseudogene-TranscribedProcessedPseudogene-TranscribedUnprocessedPseudogene-lncRNA	2	2	2	1	1	4.88763e-06	1.31438e-05	1.21065e-05	0.371857		
+biotype	IgVGene-IgVPseudogene	IgVGene-IgVPseudogene	2	2	2	1	1	4.88763e-06	1.31438e-05	1.21065e-05	0.371857		
+biotype	ProcessedPseudogene-ProteinCoding-TranscribedUnprocessedPseudogene	ProcessedPseudogene-ProteinCoding-TranscribedUnprocessedPseudogene	2	1	1	2	2	4.88763e-06	6.57192e-06	6.05327e-06	0.743714		
+biotype	TranscribedUnprocessedPseudogene-UnitaryPseudogene-lncRNA	TranscribedUnprocessedPseudogene-UnitaryPseudogene-lncRNA	2	1	1	2	2	4.88763e-06	6.57192e-06	6.05327e-06	0.743714		
+biotype	TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-lncRNA	TranscribedUnitaryPseudogene-TranscribedUnprocessedPseudogene-lncRNA	2	2	2	1	1	4.88763e-06	1.31438e-05	1.21065e-05	0.371857		
+biotype	UnitaryPseudogene-UnprocessedPseudogene-lncRNA	UnitaryPseudogene-UnprocessedPseudogene-lncRNA	2	1	1	2	2	4.88763e-06	6.57192e-06	6.05327e-06	0.743714		
+biotype	IgCPseudogene	IgCPseudogene	1	1	1	1	1	2.44381e-06	6.57192e-06	6.05327e-06	0.371857		
+biotype	ProteinCoding-UnitaryPseudogene-UnprocessedPseudogene-lncRNA	ProteinCoding-UnitaryPseudogene-UnprocessedPseudogene-lncRNA	1	1	1	1	1	2.44381e-06	6.57192e-06	6.05327e-06	0.371857		
+biotype	ProteinCoding-UnitaryPseudogene-UnprocessedPseudogene	ProteinCoding-UnitaryPseudogene-UnprocessedPseudogene	1	1	1	1	1	2.44381e-06	6.57192e-06	6.05327e-06	0.371857		
+biotype	ProteinCoding-TranscribedUnprocessedPseudogene-UnitaryPseudogene	ProteinCoding-TranscribedUnprocessedPseudogene-UnitaryPseudogene	1	1	1	1	1	2.44381e-06	6.57192e-06	6.05327e-06	0.371857		
+biotype	ProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	ProcessedPseudogene-TranscribedUnprocessedPseudogene-UnprocessedPseudogene-lncRNA	1	1	1	1	1	2.44381e-06	6.57192e-06	6.05327e-06	0.371857		
+cell_rRNA_strand	002	rRNA_bwa_stage	2.62327e+06					17.99	31.18	57.6974	1.73318		
+cell_rRNA_strand	003	rRNA_bwa_stage	4.56523e+06					25.0885	29.9435	83.7861	1.19352		
+cell_rRNA_strand	004	rRNA_bwa_stage	3.54279e+06					20.6783	27.9719	73.9254	1.35271		
+cell_rRNA_strand	005	rRNA_bwa_stage	3.04505e+06					20.6809	31.5824	65.4825	1.52713		
+cell_rRNA_strand	006	rRNA_bwa_stage	4.74898e+06					19.2865	29.7592	64.8084	1.54301		
+cell_rRNA_strand	007	rRNA_bwa_stage	9.19242e+06					21.9642	27.9104	78.6954	1.27072		
+cell_rRNA_strand	008	rRNA_bwa_stage	5.75667e+06					19.3538	29.1432	66.4094	1.50581		
+cell_rRNA_strand	009	rRNA_bwa_stage	7.01773e+06					20.7783	27.4285	75.7546	1.32005		
+cell_rRNA_strand	010	rRNA_bwa_stage	1.32794e+07					21.5055	27.2135	79.0249	1.26542		
+cell_rRNA_strand	011	rRNA_bwa_stage	1.36345e+07					22.4899	27.3235	82.3097	1.21492		
+cell_rRNA_strand	012	rRNA_bwa_stage	1.10823e+07					22.4446	27.5655	81.4227	1.22816		
+cell_rRNA_strand	013	rRNA_bwa_stage	1.04543e+07					21.919	29.7427	73.6955	1.35694		

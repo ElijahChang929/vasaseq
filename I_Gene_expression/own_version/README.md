@@ -17,6 +17,9 @@ Files here:
 | `trim_bc_anchor.py` | Step 2 pass 0: cuts the 3' tail by finding the read's own barcode. |
 | `step2_report.py` | Per-cell trimming table, written by step 2 itself. |
 | `step3_report.py` | Per-cell rRNA table, written by step 3 itself. |
+| `step7_precheck.py` | Read-only. Replays step 7's own string ops over every
+index label before the long job is submitted. See `SESSION_2026-07-28.md`. |
+| `step7_report.py` | Per-cell count-table QC + integrity checks, written after step 7. |
 | `build_rrna_reference.sh` | Builds the rRNA fasta. See "Step 3" and "Reference". |
 | `bc_PM26037_6nt.tsv` | Cell-barcode whitelist for this library (16 × 6 nt). |
 | `trimtest/` | The step-2 trimming benchmark and its results. |
@@ -976,7 +979,21 @@ reads none of those three columns.
 
 ---
 
-## Where this stands (2026-07-27)
+## Where this stands
+
+> **The pipeline is COMPLETE for ZHA9292A1 as of 2026-07-28.** All seven steps
+> have run and been verified under the **v2** annotation BED. Step 7 was the last
+> unrun stage: job `50911069`, 31m59s, MaxRSS 13.0 GB, exit 0, 21 tables in
+> `$OUTDIR`, tRNA non-empty for the first time. **The full record, the per-cell
+> numbers and the two artefacts to drop before analysis are in
+> [`SESSION_2026-07-28.md`](SESSION_2026-07-28.md) — read that first.**
+>
+> Everything below this box was written on 2026-07-27 and parts of it are
+> **superseded**; each such part is now marked inline. It is kept because the
+> diagnoses in it (the staleness incident, the coordinate bug, the sizing
+> measurements) are still the reasons the current state is what it is.
+
+### The 2026-07-26/27 chain (historical)
 
 The 2026-07-26 chain (`50788551` step2 → `50788552` step3 → `50788553` step4)
 **all reported COMPLETED, exit 0:0.** Steps 2 and 3 are good and their numbers
@@ -1143,7 +1160,14 @@ most analyses care about — but do not read their absolute values.
 This is protocol-inherent (CEL-seq2/VASA uses a 6 nt UMI), not a defect in this
 fork, and the published pipeline behaves identically.
 
-#### The annotation BED has no cytoplasmic tRNA, despite its name
+#### The annotation BED had no cytoplasmic tRNA, despite its name (FIXED)
+
+> **FIXED 2026-07-27/28.** This describes **v1**. The v2 BED adds 1137 tRNA
+> loci and `config.sh` now uses it, so the statement below that every
+> `*_tRNA.*Counts.tsv` is empty is **no longer true**: step 7 (`50911069`)
+> reports 13,565 reads on 332 tRNA entries collapsing to 90 isotype classes.
+> The `MtTrna` case-sensitivity point in item 2 still stands — 23 such labels
+> still land in the gene tables.
 
 `Mus_musculus.GRCm39.116.homemade_IntronExonTrna.bed` contains **no tRNA
 biotype**. Counting the biotype field over all rows gives ProteinCoding,
@@ -1168,14 +1192,20 @@ Counts are tiny, so nothing downstream is at risk. **Do not "fix" the case in
 `a_Mapping/`** — that is a published script and this repo's rule is comments
 only there.
 
-#### `build_annotation_bed.sh` — v2 of the BED, built but NOT yet in use
+#### `build_annotation_bed.sh` — v2 of the BED (IN USE since 2026-07-27)
 
 Written and run 2026-07-27. Output
 `$VASA_REF/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed`
 (718 272 gene rows + **1137** tRNA rows), provenance alongside it as
-`...v2.provenance.txt`. **`config.sh` still points at the v1 BED** — nothing has
-changed behaviour yet. v1 is read-only and byte-identical afterwards
+`...v2.provenance.txt`. v1 is read-only and byte-identical afterwards
 (md5 `04e0369c…`, recorded).
+
+> **SUPERSEDED 2026-07-28.** This section's heading and the sentence that used to
+> follow here said the BED was "built but NOT yet in use" and that `config.sh`
+> still pointed at v1. **Both were true only until later the same day.**
+> `config.sh:266` now points at the **v2** BED (commit `c8aedf8`), and steps 5
+> and 6 were re-run under it (`50836431`, `50836432`) before this README was next
+> touched. Every count table on disk is a **v2** table.
 
 **It builds from primary sources — the Ensembl GTF and GtRNAdb — not from v1.**
 That closes the standing "the annotation BED has no build script" defect: v1
@@ -1311,7 +1341,13 @@ move. That is the paper's intended behaviour, but it means v1 and v2 tables
 cannot be mixed. Cost of the switch is step 5 (~15 min) + step 6 (~3 h);
 steps 1–4 are unaffected.
 
-**Steps 1–5 are all done and verified** (`50804554` for step 5).
+> **DONE 2026-07-27.** The switch was made and paid for: step 5 `50836431`
+> (14m55s) and step 6 `50836432` (**4h47m**, MaxRSS 69.4 GB — note that is
+> materially longer than the ~3 h estimated above). Step 7 then ran on the
+> result as `50911069`. `50804554` was the **v1** step 5 and is superseded.
+
+**Steps 1–7 are all done and verified.** See the box at the top of "Where this
+stands" and `SESSION_2026-07-28.md`.
 
 **The standing check after any stage** — cheap, and it is the one that caught
 the stale-input run:

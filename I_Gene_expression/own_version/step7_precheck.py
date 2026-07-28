@@ -48,9 +48,15 @@ import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# these definitions are COPIED VERBATIM from
-# ../a_Mapping/countTables_fromPickle.py so that what is tested here is exactly
-# what step 7 will execute. Do not "clean them up" -- the point is fidelity.
+# These definitions are copied from ../a_Mapping/countTables_fromPickle.py so
+# that what is tested here is exactly what step 7 will execute. Do not "clean
+# them up" -- the point is fidelity, not tidiness.
+#
+# reduceGeneName, countTotalUMI and remove_ENSandGm are character-for-character
+# identical to the source. countTotalReads is the ONE exception: the source has
+# a second branch for protocol in ('ramda','smartseq_noUMI') which is dropped
+# here, because pipeline.sh calls step 7 with protocol='vasa' and nothing else.
+# Behaviour on the 'vasa' path is identical.
 # ---------------------------------------------------------------------------
 def reduceGeneName(gene, uni_genes):
     rg = gene

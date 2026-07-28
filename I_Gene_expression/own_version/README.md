@@ -983,7 +983,7 @@ reads none of those three columns.
 
 > **The pipeline is COMPLETE for ZHA9292A1 as of 2026-07-28.** All seven steps
 > have run and been verified under the **v2** annotation BED. Step 7 was the last
-> unrun stage: job `50911069`, 31m59s, MaxRSS 13.0 GB, exit 0, 21 tables in
+> unrun stage: job `50911069`, 31m59s, MaxRSS 13.0 GB, exit 0, 20 tables in
 > `$OUTDIR`, tRNA non-empty for the first time. **The full record, the per-cell
 > numbers and the two artefacts to drop before analysis are in
 > [`SESSION_2026-07-28.md`](SESSION_2026-07-28.md) — read that first.**

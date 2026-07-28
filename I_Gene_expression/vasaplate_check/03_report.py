@@ -110,7 +110,11 @@ ul{padding-left:1.3em}
 
 
 def main():
-    S = pd.read_csv(f"{C.RES}/comparison_summary.tsv", sep="\t", index_col=0)["value"]
+    _sum = pd.read_csv(f"{C.RES}/comparison_summary.tsv", sep="\t", index_col=0)
+    # one column per run; report the newest unless RUN names one
+    _want = os.environ.get("RUN")
+    _col = f"ours_{_want}" if _want and f"ours_{_want}" in _sum.columns else _sum.columns[0]
+    S = _sum[_col]
     bs = pd.read_csv(f"{C.RES}/biotype_composition.tsv", sep="\t", index_col=0)
 
     def g(k, d="—"):
@@ -282,6 +286,30 @@ def main():
       "and current GtRNAdb writes <code>Und</code>. GtRNAdb has also renumbered. What survives is "
       "the biology — <strong>59 of 62 isotype classes (95%)</strong> — and isotype is exactly what "
       "step 7 collapses tRNA to.</li></ul>")
+    if has_trna:
+        A("<h3>We detect 5× fewer tRNA than the deposited table, and the reason is geometric</h3>")
+        A(f'<p>The BED now carries 1,758 tRNA loci and step 6 assigns reads to them, but we end '
+          f'up with {g("tRNA rows: ours")} detected rows against the published '
+          f'{g("tRNA rows: published")} ({g("tRNA rows: shared")} shared), and a tRNA UFI share of '
+          f'{g("tRNA UFI share, ours (%)")}% against {g("tRNA UFI share, published (%)")}%. '
+          "That is not a defect in the annotation — it is read geometry:</p>")
+        A('<div class="scroll"><table class="data"><tbody>'
+          "<tr><th>tRNA feature length, median</th><td class='num'>72 bp</td><td class='note'>1,758 loci</td></tr>"
+          "<tr><th>read length, mean</th><td class='num'>70.8 bp</td><td class='note'>entering STAR</td></tr>"
+          "<tr><th>reads LONGER than the feature</th><td class='num'>37.5%</td><td class='note'>can never be contained</td></tr>"
+          "<tr><th>reads equal in length</th><td class='num'>8.3%</td><td class='note'>only exact alignment counts</td></tr>"
+          "<tr><th>reads actually kept (<code>jS:IN</code>)</th><td class='num'>9.5%</td><td class='note'>33 of 349, five cells</td></tr>"
+          "</tbody></table></div>")
+        A("<p><code>countTables_2pickle_cellsSpliced.py</code> keeps a non-splicing biotype only "
+          "when the read falls entirely inside the feature. A tRNA gene is about the length of a "
+          "read in this library, so containment is close to geometrically impossible.</p>")
+        A('<div class="callout warn"><p><strong>Why the authors got 5× more is unresolved.</strong> '
+          "It is the same FASTQ, so the same read lengths — which points at their tRNA features "
+          "being longer than GtRNAdb's mature-tRNA bounds (a precursor annotation with 5′ leader "
+          "and 3′ trailer would fit reads inside). But their annotation was never deposited and the "
+          "Methods name no tRNA source, so this is a hypothesis, not a finding. Do not present the "
+          "224 as a reproduction of the 1,130.</p></div>")
+
     A('<div class="callout warn"><p><strong>The <code>_tRNA.*Counts.tsv</code> tables merge the two '
       "species.</strong> <code>countTables_fromPickle.py</code> groups tRNA rows by "
       "<code>rsplit('.')[-1]</code>, i.e. isotype+anticodon, so human <code>ValAAC</code> and mouse "

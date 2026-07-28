@@ -52,11 +52,11 @@ run directories, never recomputed.
 | 1 | `vasaplate_out` | first full run | `50542435`–`50542441` | ❌ **stage 7 FAILED** |
 | 2 | `rerun_fixednames/` | gene-name fix, stages 6–7 | `50606988`–`50606989` | ✅ superseded |
 | 3 | `vasaplate_out_rrnav2` | rRNA reference v2, stages 3–7 | `50788060`–`50788065` | ✅ baseline |
-| 4 | `vasaplate_out_bedv2` | annotation BED **with tRNA**, stages 5–7 | `50861367`–`50861370` | 🔄 in flight |
+| 4 | `vasaplate_out_bedv2` | annotation BED **with tRNA**, stages 5–7 | `50861367`–`50861370` | ✅ **current** |
 
 > ⚠️ **Run 1's partial tables are still on disk and must not be used.** Its stage 7
 > died with an `IndexError` in `reduceGeneName`. The tell: `vasaplate_out_mapStats.log`
-> is 8 lines where a complete run writes 22, and every `uniaggGenes_*` /
+> is 8 lines where a complete run writes 21, and every `uniaggGenes_*` /
 > `shortGeneNames_*` table is missing. **`status.sh` still defaults to run 1's job
 > ids**, so running it bare shows you the failed run.
 
@@ -129,7 +129,7 @@ and isotype is exactly what step 7 collapses tRNA to.
 
 ---
 
-## Results so far (baseline = run 3, before tRNA)
+## Results (run 4, with tRNA; run 3 alongside)
 
 From `res/vasaplate/comparison_summary.tsv`. **Never hand-transcribe these — read
 the TSV.**
@@ -148,6 +148,39 @@ the TSV.**
 | HEK293T median UFIs / genes | 190,110 / 18,316 | 185,227 / 18,757 |
 | mESC median UFIs / genes | 75,233 / 11,852 | 72,893 / 11,930 |
 | sncRNA share | 1.421% | **1.604%** (paper states **1.4%**) |
+| **tRNA rows detected** | **1,130** | **224** (148 shared) |
+| **tRNA UFI share** | **0.0241%** | **0.0037%** |
+
+Adding tRNA did not disturb anything else: per-gene Spearman 0.9739 → **0.9732**,
+median per-cell Pearson 0.9821 → **0.9820**, shared rows 72,613 → **72,760**.
+
+### The tRNA shortfall is geometric, not an annotation defect
+
+| | |
+|---|---|
+| tRNA feature length, median | **72 bp** (1,758 loci) |
+| read length, mean | **70.8 bp** |
+| reads LONGER than the feature | 37.5% — can never be contained |
+| reads equal in length | 8.3% |
+| reads actually kept (`jS:IN`) | **9.5%** (33 of 349, five cells) |
+
+Step 6 keeps a non-splicing biotype only when the read falls **entirely inside**
+the feature. A tRNA gene is about the length of a read in this library, so
+containment is close to geometrically impossible.
+
+**Why the authors got 5× more is unresolved.** Same FASTQ, so the same read
+lengths — which points at their tRNA features being longer than GtRNAdb's
+mature-tRNA bounds (a precursor annotation with 5′ leader and 3′ trailer would fit
+reads inside). Their annotation was never deposited and the Methods name no tRNA
+source, so this is a hypothesis. **Do not present the 224 as a reproduction of the
+1,130.**
+
+> A retracted claim, kept so it is not re-derived: an earlier pass measured "62.8%
+> of tRNA reads overhang by exactly 1 bp, so `BED_COORD=fix` would recover them".
+> That was computed on the wrong columns — in the stage-5 output, column 7 is the
+> `CG:…;nM:…;jS:…` info string and column 8 is gene length, **not** gene
+> start/end. The 9-column layout is documented in `own_version/README.md`
+> ("The 9 output columns"). `fix` would not recover these reads.
 
 The Methods-rule rates diverge more than the Fig. 1d rates because that rule counts
 *genes*, so it is dominated by genes detected at one or two counts, and we detect
@@ -262,12 +295,11 @@ appear while a stage is still running, so counting files is not proof.
      (run 3 shows 0);
    - `vasaplate_out_bedv2_tRNA.ReadCounts.tsv` has rows (run 3's is header-only);
    - the log is the full **22 lines**, not 8 (that is how run 1's failure looked).
-2. **Regenerate the report** against run 4: `01_compare.py bedv2` → `02_figures.py`
-   → `03_report.py`. Expect the row-set overlap to improve by ~1,130 tRNA rows and
-   the per-gene correlation on non-tRNA rows **not** to degrade — a drop there means
-   the BED change broke something outside tRNA.
-3. **Compare tRNA at isotype level** against the published table's 1,130 simple tRNA
-   rows — 59 of 62 classes are the realistic target. Do **not** compare locus ids.
+2. ~~Regenerate the report against run 4~~ — **done**. Outputs in `res/vasaplate/`.
+3. **Decide what to do about the tRNA shortfall.** The geometric cause is measured;
+   the open question is whether to test a padded/precursor tRNA annotation. That is
+   inventing annotation unless a source can be named, so it needs a decision, not a
+   default.
 4. **Then, as a separate run**, switch to `unique_rRNA_human_mouse.v3.fa` and re-run
    stages 3–7 into `vasaplate_out_rrnav3` (`START=3`, `RIBOREF=…v3.fa`,
    `REFBED=…v2.bed`). Keep it separate from the tRNA change so the two variables stay

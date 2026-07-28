@@ -174,30 +174,42 @@ def fig_concordance(conc, P, mode):
 
 # --- 05 tRNA before / after ---------------------------------------------------
 def fig_trna(summary, P, mode):
-    def g(k, default=np.nan):
+    """summary has ONE COLUMN PER RUN (ours_rrnav2, ours_bedv2, ...)."""
+    def g(k, col, default=np.nan):
         try:
-            return float(summary.loc[k, "value"])
+            return float(summary.loc[k, col])
         except Exception:
             return default
 
-    labels = ["published\n(GSM5369495)", "ours, rrnav2\n(BED without tRNA)",
-              "ours, bedv2\n(BED with tRNA)"]
-    vals = [g("tRNA rows: published"), 0.0, g("tRNA rows: ours")]
-    have_bedv2 = not np.isnan(vals[2]) and vals[2] > 0
-    colors = [P["s4"], P["s2"], P["s1"]]
+    pub = next((g("tRNA rows: published", c) for c in summary.columns
+                if not np.isnan(g("tRNA rows: published", c))), np.nan)
+    bars_spec = [("published\n(GSM5369495)", pub, "s4")]
+    for run, slot in (("rrnav2", "s2"), ("bedv2", "s1")):
+        col = f"ours_{run}"
+        if col in summary.columns:
+            bars_spec.append((f"ours, {run}\n"
+                              f"({'BED without tRNA' if run == 'rrnav2' else 'BED with tRNA'})",
+                              g("tRNA rows: ours", col), slot))
 
-    fig, ax = plt.subplots(figsize=(6.4, 4.2))
-    bars = ax.bar(labels, [0 if np.isnan(v) else v for v in vals], color=colors, width=0.6)
-    for b, v in zip(bars, vals):
-        ax.annotate("not yet run" if np.isnan(v) else f"{v:,.0f}",
-                    (b.get_x() + b.get_width() / 2, max(b.get_height(), 0)),
+    fig, ax = plt.subplots(figsize=(6.8, 4.4))
+    labels = [b[0] for b in bars_spec]
+    vals = [0.0 if np.isnan(b[1]) else b[1] for b in bars_spec]
+    bars = ax.bar(labels, vals, color=[P[b[2]] for b in bars_spec], width=0.58)
+    for b, (_, v, _) in zip(bars, bars_spec):
+        ax.annotate("not run" if np.isnan(v) else f"{v:,.0f}",
+                    (b.get_x() + b.get_width() / 2, b.get_height()),
                     textcoords="offset points", xytext=(0, 5), ha="center",
-                    fontsize=9, color=P["ink"])
+                    fontsize=10, color=P["ink"])
+    ax.set_ylim(0, max(vals + [1]) * 1.18)
     ax.set_ylabel("distinct tRNA rows detected")
-    ax.set_title("tRNA detection: the gap this rebuild closes", color=P["ink"])
-    if not have_bedv2:
-        ax.text(0.5, 0.5, "bedv2 stage 7 not finished", transform=ax.transAxes,
-                ha="center", color=P["ink2"], fontsize=9)
+    ax.set_title("tRNA detection, ours against the deposited table", color=P["ink"])
+    # The shortfall is geometric, and saying so on the figure stops it being read
+    # as a bug in the BED.
+    ax.text(0.5, -0.30,
+            "Reads (mean 70.8 bp) are as long as tRNA features (median 72 bp), and step 6 keeps a\n"
+            "non-splicing biotype only when the read is fully inside it — true for just 9.5% here.",
+            transform=ax.transAxes, ha="center", va="top",
+            fontsize=8.5, color=P["ink2"])
     save(fig, "05_trna_before_after", P, mode)
 
 

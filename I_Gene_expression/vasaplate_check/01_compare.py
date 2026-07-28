@@ -172,13 +172,21 @@ def main():
         bshare.loc["tRNA", "published"]) if "tRNA" in bshare.index else 0.0, 4)
 
     # --- write ----------------------------------------------------------------
-    out = pd.DataFrame({"value": pd.Series(rows)})
+    # ONE COLUMN PER RUN. An earlier version merged every run into a single
+    # "value" column with prev.combine_first(out), which silently kept the OLDER
+    # run's number wherever the key already existed -- so a bedv2 summary came
+    # out reporting rrnav2's tRNA count of 0. Runs must stay side by side: the
+    # whole point is comparing them.
+    col = f"ours_{run}"
+    out = pd.DataFrame({col: pd.Series(rows)})
     out.index.name = "quantity"
     dest = f"{C.RES}/comparison_summary.tsv"
-    if os.path.exists(dest) and run != "rrnav2":
+    if os.path.exists(dest):
         prev = pd.read_csv(dest, sep="\t", index_col=0)
-        out = prev.combine_first(out).reindex(
-            list(dict.fromkeys(list(prev.index) + list(out.index))))
+        prev = prev.drop(columns=[c for c in prev.columns if c == col], errors="ignore")
+        out = out.join(prev, how="outer") if len(prev.columns) else out
+        order = list(dict.fromkeys(list(rows.keys()) + list(prev.index)))
+        out = out.reindex(order)
     out.to_csv(dest, sep="\t")
 
     log("")

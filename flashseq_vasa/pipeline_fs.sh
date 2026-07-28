@@ -7,20 +7,26 @@
 #   1. Edit config.sh (or override FSV_* on the command line)
 #   2. ./pipeline_fs.sh check                  <- verifies every path and tool
 #   3. ./pipeline_fs.sh lut                    <- measure VASA's read lengths (once)
-#      FSV_ARM=native  ./pipeline_fs.sh prep map assign pickle tables
-#      FSV_ARM=vasalen ./pipeline_fs.sh prep map assign pickle tables
+#      FSV_ARM=native  ./pipeline_fs.sh prep map assign
+#      FSV_LIBS=<one>  FSV_ARM=native ./pipeline_fs.sh pickle1   <- x10, one per job
+#      FSV_ARM=native  ./pipeline_fs.sh pickle_merge tables recon
 #   or ./pipeline_fs.sh status                 <- how many files exist per stage
 #
 #   FSV_LIBS='ZHA8833A9' ./pipeline_fs.sh prep map    <- one library, for testing
 #
 # THE STAGES (each one's output is the next one's input)
-#   lut     VASA's step-3 fastqs  -> vasa_starinput_len_lut.txt   (once, both arms)
-#   prep    delivered R1          -> cells/<LIB>_cbc_noumi_R1.fq.gz
-#   map     that                  -> cells/<LIB>_cbc_noumi_E99_Aligned.out.bam
-#   assign  that                  -> cells/*_genes.bed.gz         (reads -> genes)
-#   pickle  all libraries' beds   -> <SAMPLE>.pickle.gz           (step 6)
-#   tables  pickle                -> <SAMPLE>_*.tsv               (step 7)
-#   recon   everything above      -> reconciliation.tsv + report
+#   lut          VASA's step-3 fastqs -> vasa_starinput_len_lut.txt (once, both arms)
+#   prep         delivered R1         -> cells/<LIB>_cbc_noumi_R1.fq.gz
+#   map          that                 -> cells/<LIB>_cbc_noumi_E99_Aligned.out.bam
+#   assign       that                 -> cells/*_genes.bed.gz       (reads -> genes)
+#   pickle1      ONE library's beds   -> pickle/<LIB>/<LIB>dict.pickle   (step 6)
+#   pickle_merge all of those         -> <SAMPLE>.pickle.gz
+#   tables       pickle               -> <SAMPLE>_*.tsv             (step 7)
+#   recon        everything above     -> reconciliation.tsv + report
+#
+# pickle1 is per library because step 6 is the memory-hungry stage and its cost
+# is linear in BED size -- see the stage's own header for the measurements and for
+# why splitting it computes the same object rather than an approximation.
 #
 # WHY THIS IS A FORK AND NOT A PATCH
 #   Nothing in code/I_Gene_expression/a_Mapping/ is edited -- it is published
@@ -77,9 +83,18 @@ mltbed() { echo "${FSV_CELLDIR}/$(stem "$1")_E99_Aligned.out.nsorted.multimapper
 # The delivered R1 for a library. The S-number differs per library and is not
 # derivable, so it is globbed -- but exactly one match is required, because two
 # matches would silently mean a lane or a re-run got mixed in.
+#
+# `find -L`, NOT bare `find`. $FSV_FASTQ is a SYMLINK (the delivery directory is
+# .../guangxin.zhang/RN26038/<run>/fastq -> /nemo/stp/sequencing/inputs/...), and
+# find does not follow a symlink at its start point unless told to: bare
+# `find "$FSV_FASTQ" -maxdepth 1 -name ...` stats the link itself, descends into
+# nothing, prints nothing, and EXITS 0. That is the worst shape of failure --
+# it looks exactly like "the files are not there". Measured on cn079: bare find
+# returned nothing while a shell glob resolved the file, which is why the login
+# node's `ls` probe disagreed with the job's check. -L makes find traverse it.
 find_r1() {
     local lib=$1 hits n
-    hits=$(find "$FSV_FASTQ" -maxdepth 1 -name "${lib}_S*_R1_001.fastq.gz" | sort)
+    hits=$(find -L "$FSV_FASTQ" -maxdepth 1 -name "${lib}_S*_R1_001.fastq.gz" | sort)
     n=$(printf '%s\n' "$hits" | grep -c . || true)
     [ "$n" -eq 1 ] || die "$lib: expected exactly 1 delivered R1, found $n"
     printf '%s\n' "$hits"
@@ -168,7 +183,7 @@ stage_check() {
         [ -x "${FSV_VASA_SCRIPTS}/$s" ] && echo "  OK   ${FSV_VASA_SCRIPTS}/$s" \
             || { echo "  MISS/NOT-EXEC ${FSV_VASA_SCRIPTS}/$s"; bad=1; }
     done
-    for s in "$FSV_TRIM_VASALEN" "$FSV_MEASURE_LEN" "$FSV_BUILD_TABLES" "$FSV_RECON"; do
+    for s in "$FSV_TRIM_VASALEN" "$FSV_MEASURE_LEN" "$FSV_BUILD_TABLES" "$FSV_RECON" "$FSV_MERGE_PICKLES"; do
         [ -e "$s" ] && echo "  OK   $s" || { echo "  MISS $s"; bad=1; }
     done
 
@@ -260,7 +275,13 @@ do_prep() {
 
     # Record counts at every point, so `recon` never has to re-derive them.
     local n_raw n_out
-    n_raw=$(awk -F'[ ,]+' '/^Total reads processed:/{gsub(/,/,"",$4); print $4; exit}' "${FSV_LOGDIR}/cutadapt_${lib}.log")
+    # cutadapt prints "Total reads processed:  38,710,566" -- thousands
+    # separators and all. Take the whole comma-formatted number off the END of
+    # the line and strip the commas from it; do NOT put ',' in the field
+    # separator, which would split 38,710,566 into three fields and silently
+    # record 38 as the chain-start count. recon consumes this value rather than
+    # re-deriving it, so a truncated number would corrupt the reconciliation.
+    n_raw=$(awk '/^Total reads processed:/{n=$NF; gsub(/,/,"",n); print n; exit}' "${FSV_LOGDIR}/cutadapt_${lib}.log")
     n_out=$(( $(zcat "$out" | wc -l) / 4 ))
     printf 'library\t%s\narm\t%s\nfastq_records\t%s\nprep_records\t%s\n' \
         "$lib" "$FSV_ARM" "${n_raw:-NA}" "$n_out" > "${FSV_LOGDIR}/prep_${lib}.tsv"
@@ -275,8 +296,11 @@ stage_prep() {
     export -f do_prep say die rm_stale stem prep_fq find_r1
     export FSV_ARM FSV_CELLDIR FSV_LOGDIR FSV_FASTQ FSV_CUTADAPT FSV_TRIM_ADAPTER
     export FSV_TRIM_Q FSV_TRIM_OVERLAP FSV_TRIM_ERR FSV_TRIM_MINLEN
-    export FSV_TRIM_VASALEN FSV_VASALEN_LUT FSV_VASALEN_SEED
-    libs() { echo $FSV_LIBS; }; export -f libs; export FSV_LIBS
+    export FSV_TRIM_VASALEN FSV_VASALEN_LUT FSV_VASALEN_SEED FSV_LIBS
+    # Workers run in a fresh `bash -c`, which inherits neither functions nor
+    # unexported variables -- forgetting one of these cost a whole step-5 launch
+    # on the VASA side ("rm_stale: command not found", and the ASSIGN_*_SH empty
+    # besides). Every function and variable do_prep touches is above.
     libs | tr ' ' '\n' | xargs -P "$FSV_NCORES" -I{} bash -c 'do_prep {}' _
 
     # Counting files is not proof. Verify per library that the output exists and
@@ -394,8 +418,7 @@ stage_assign() {
     export TMPDIR="${FSV_OUTDIR}/tmp"; mkdir -p "$TMPDIR"
     export -f do_assign say die rm_stale stem bam sglbed mltbed
     export FSV_CELLDIR FSV_LOGDIR FSV_REF_BED FSV_STRANDED FSV_P2SAMTOOLS FSV_P2BEDTOOLS
-    export FSV_ASSIGN_SINGLE_SH FSV_ASSIGN_MULTI_SH
-    libs() { echo $FSV_LIBS; }; export -f libs; export FSV_LIBS
+    export FSV_ASSIGN_SINGLE_SH FSV_ASSIGN_MULTI_SH FSV_LIBS
     libs | tr ' ' '\n' | xargs -P "$FSV_NCORES" -I{} bash -c 'do_assign {}' _
 
     local bad=0 lib
@@ -424,24 +447,83 @@ stage_assign() {
 }
 
 ###############################################################################
-# pickle -- step 6, upstream, protocol=smartseq_noUMI, cellid from filename
+# pickle -- step 6, upstream script, run ONE LIBRARY AT A TIME, then merged
 #
-# Runs ONCE over the whole cells/ folder, so assign must be finished for every
-# library first. Superlinear-ish in BED size on the VASA side (69 MB -> 28 min,
-# 254 MB -> 1h47m); the script's pool is hardcoded at ncores=8.
+# WHY THIS IS SPLIT, and why the split is exact rather than an approximation
+# ------------------------------------------------------------------------
+# Upstream step 6 runs once over the whole cells/ folder with an 8-wide pool.
+# That shape does not fit ten FLASH-seq libraries. Sizing from the VASA side,
+# where the same script was measured at 69 MB of *_genes.bed.gz -> 28m36s /
+# 3.24 GB and 254 MB -> 1h47m27s / 12.22 GB (45.6 GB of RSS per GB of BED,
+# scaling exponent 1.02 on both time and memory, i.e. linear): a full FLASH-seq
+# library yields roughly 870 MB of BED (640 MB single + 230 MB multi,
+# extrapolated from the stride-64 dry run at 32 bytes per uniquely mapped read),
+# so one library costs ~5-6 h and ~40 GB. Eight of those concurrently in one
+# process is ~250 GB in a single node, and a failure anywhere loses the whole
+# run.
+#
+# get_cellDict(cell) is per-library independent -- it globs cell + '*_genes.bed.gz'
+# and shares no state with any other cell -- and the parent does nothing but
+# collect: `gcnt[cell] = cnt` for each result, then `pd.DataFrame(gcnt)`. So
+# running the script once per library and merging the dicts computes the SAME
+# object, not an approximation of it. merge_pickles.py does only what the
+# parent's tail does, and asserts the properties that make it equivalent
+# (disjoint column keys, no cross-library gene collision handling needed because
+# DataFrame construction aligns on the union of row keys). Column ORDER cannot
+# matter: step 7's first act is `cntdf = cntdf[sorted(cntdf.columns)]`.
+#
+# The cell id must come out the same as it would have from a single run, so each
+# per-library working directory contains a folder literally named 'cells' holding
+# symlinks to that library's two BEDs, and step 6 is invoked from its parent with
+# the relative name 'cells'. That makes the id 'cells/<LIB>' for every library,
+# exactly as a combined run would have produced.
+#
+#   ./pipeline_fs.sh pickle1              # every library, serially (rarely wanted)
+#   FSV_LIBS=ZHA8833A9 ./pipeline_fs.sh pickle1   # one -- this is the array unit
+#   ./pipeline_fs.sh pickle_merge         # combine into <SAMPLE>.pickle.gz
 ###############################################################################
-stage_pickle() {
-    say "pickle: step 6 over $(find "$FSV_CELLDIR" -name '*.singlemappers_genes.bed.gz' | wc -l) libraries (the memory-hungry step)"
+pickle_dir() { echo "${FSV_OUTDIR}/pickle/$1"; }
+
+do_pickle1() {
+    local lib=$1 d s m
+    d=$(pickle_dir "$lib")
+    s=$(sglbed "$lib"); m=$(mltbed "$lib")
+    [ -s "$s" ] || die "$lib: no singlemapper BED -- run assign first"
+    rm -rf "$d"; mkdir -p "$d/cells"
+    # Symlinks, not copies: 870 MB per library and the BEDs are read-only input.
+    ln -sf "$s" "$d/cells/$(basename "$s")"
+    [ -s "$m" ] && ln -sf "$m" "$d/cells/$(basename "$m")"
+    say "pickle1 $lib: $(du -Lsh "$d/cells" | cut -f1) of BED"
+    # Step 6 ends with a bare `gzip` on <output>.pickle, which refuses to
+    # clobber; the rm -rf above already guarantees a clean directory.
+    ( cd "$d" && "${FSV_VASA_SCRIPTS}/countTables_2pickle_cellsSpliced.py" \
+        "cells" "$lib" "$FSV_PROTOCOL" "$FSV_CELLID_FROM" ) || die "$lib: step 6 failed"
+    [ -s "$d/${lib}dict.pickle" ] || die "$lib: step 6 wrote no dict.pickle"
+    say "pickle1 $lib done: $(ls -lh "$d/${lib}dict.pickle" | awk '{print $5}')"
+}
+
+stage_pickle1() {
     eval "$FSV_CONDA_ACTIVATE"
-    # Step 6 ends with a bare `gzip` on <sample>.pickle.
+    local lib
+    for lib in $(libs); do do_pickle1 "$lib"; done
+}
+
+stage_pickle_merge() {
+    say "pickle_merge: combining $(nlibs) per-library dicts into ${FSV_SAMPLE}.pickle.gz"
+    eval "$FSV_CONDA_ACTIVATE"
     rm_stale "${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz" "${FSV_OUTDIR}/${FSV_SAMPLE}.pickle" \
              "${FSV_OUTDIR}/${FSV_SAMPLE}dict.pickle"
-    # Run from OUTDIR with the RELATIVE folder name: the column id is derived
-    # from the path, so an absolute path would end up inside every column name.
-    ( cd "$FSV_OUTDIR" && "${FSV_VASA_SCRIPTS}/countTables_2pickle_cellsSpliced.py" \
-        "cells" "$FSV_SAMPLE" "$FSV_PROTOCOL" "$FSV_CELLID_FROM" ) || die "step 6 failed"
-    [ -s "${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz" ] || die "step 6 wrote no pickle.gz"
-    say "pickle done: ${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz"
+    local args=()
+    local lib
+    for lib in $(libs); do
+        local p; p="$(pickle_dir "$lib")/${lib}dict.pickle"
+        [ -s "$p" ] || die "$lib: missing $p -- run pickle1 for it first"
+        args+=("$p")
+    done
+    "$FSV_PYTHON" "$FSV_MERGE_PICKLES" "${FSV_OUTDIR}/${FSV_SAMPLE}" "${args[@]}" \
+        || die "merge_pickles.py failed"
+    [ -s "${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz" ] || die "merge wrote no pickle.gz"
+    say "pickle_merge done: ${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz"
 }
 
 ###############################################################################
@@ -484,7 +566,8 @@ stage_status() {
     printf "  %-34s %s\n" "map BAM"     "$(find "$FSV_CELLDIR" -name '*_E99_Aligned.out.bam' 2>/dev/null | wc -l)"
     printf "  %-34s %s\n" "assign single bed" "$(find "$FSV_CELLDIR" -name '*singlemappers_genes.bed.gz' 2>/dev/null | wc -l)"
     printf "  %-34s %s\n" "assign multi bed"  "$(find "$FSV_CELLDIR" -name '*multimappers_genes.bed.gz' 2>/dev/null | wc -l)"
-    printf "  %-34s %s\n" "pickle"      "$([ -s "${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz" ] && echo yes || echo no)"
+    printf "  %-34s %s\n" "pickle1 per-library dicts" "$(find "${FSV_OUTDIR}/pickle" -name '*dict.pickle' 2>/dev/null | wc -l)"
+    printf "  %-34s %s\n" "merged pickle" "$([ -s "${FSV_OUTDIR}/${FSV_SAMPLE}.pickle.gz" ] && echo yes || echo no)"
     printf "  %-34s %s\n" "step7 tables" "$(find "$FSV_OUTDIR" -maxdepth 1 -name "${FSV_SAMPLE}*.tsv" 2>/dev/null | wc -l)"
     rule
 }
@@ -500,7 +583,8 @@ for cmd in "$@"; do
         prep)   stage_prep   2>&1 | tee "${FSV_LOGDIR}/prep.log" ;;
         map)    stage_map    2>&1 | tee "${FSV_LOGDIR}/map.log" ;;
         assign) stage_assign 2>&1 | tee "${FSV_LOGDIR}/assign.log" ;;
-        pickle) stage_pickle 2>&1 | tee "${FSV_LOGDIR}/pickle.log" ;;
+        pickle1)      stage_pickle1      2>&1 | tee -a "${FSV_LOGDIR}/pickle1.log" ;;
+        pickle_merge) stage_pickle_merge 2>&1 | tee "${FSV_LOGDIR}/pickle_merge.log" ;;
         tables) stage_tables 2>&1 | tee "${FSV_LOGDIR}/tables.log" ;;
         recon)  stage_recon  2>&1 | tee "${FSV_LOGDIR}/recon.log" ;;
         status) stage_status ;;

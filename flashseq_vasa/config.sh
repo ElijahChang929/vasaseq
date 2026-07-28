@@ -259,6 +259,10 @@ FSV_TRIM_VASALEN="${FSV_TRIM_VASALEN:-$FSV_DIR/trim_to_vasalen.sh}"
 FSV_MEASURE_LEN="${FSV_MEASURE_LEN:-$FSV_DIR/measure_vasa_readlen.py}"
 FSV_BUILD_TABLES="${FSV_BUILD_TABLES:-$FSV_DIR/build_analysis_tables.py}"
 FSV_RECON="${FSV_RECON:-$FSV_DIR/reconcile.py}"
+# Combines the per-library step-6 dicts into the single frame step 7 expects.
+# Does only what upstream step 6's parent tail does; see pipeline_fs.sh's
+# `pickle` stage header for why the split is exact.
+FSV_MERGE_PICKLES="${FSV_MERGE_PICKLES:-$FSV_DIR/merge_pickles.py}"
 
 # --- cluster tools (EasyBuild module tree) -----------------------------------
 # Same module builds and same absolute-path convention as own_version/config.sh

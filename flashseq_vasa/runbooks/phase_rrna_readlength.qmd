@@ -1,0 +1,959 @@
+---
+title: "FLASH-seq ↔ VASA-seq — rRNA content and the read-length control"
+author: "Guangxin Zhang"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    embed-resources: true
+engine: jupyter
+jupyter: bash
+---
+
+## What this document is
+
+This reproduces two finished legs of the FLASH-seq ↔ VASA-seq comparison:
+
+1. **the rRNA fraction and its subunit composition**, on both protocols, measured
+   by one method; and
+2. **the read-length control** that decides whether FLASH-seq's apparent failure
+   to detect short RNA species is chemistry or an artefact of 151 nt reads.
+
+It does **not** cover the two legs that are still blocked (full biotype
+composition against VASA, and depth-matched detection) — those need step-6
+pickles for four libraries that were still building when this was written.
+Section 8 says exactly where they stop.
+
+**To run it line by line:** open this `.qmd` in VS Code (Remote-SSH to a NEMO
+login node, then `srun --partition=nint --pty --mem=16G bash` for a compute
+shell) and execute chunks one at a time. The jupyter bash engine keeps **one
+persistent shell** for the whole document, so a variable set in the setup chunk
+is still there twenty chunks later — which is the reason for this format. Do not
+run the heavy chunks on a login node; the memory cgroup there kills processes
+silently.
+
+Every number quoted in the prose below was produced by the chunk above it. Where
+a number came from a run that is *not* repeated here (because it takes hours),
+the prose says so and gives the job id.
+
+---
+
+## 1. Setup — paths, versions, and what we are pointing at
+
+Everything downstream refers to these variables, so re-running against a copy of
+the data is a one-line edit. `RES` is the only directory this document writes to.
+
+`FSV_FASTQ` is worth noting: it is a **symlink** into `/nemo/stp/sequencing/`,
+a different filesystem from the working directory. Anything that globs it needs
+`find -L`, or it will stat the link rather than descend into it.
+
+```{bash}
+#| label: setup-paths
+set -u
+
+PROJ=/nemo/lab/turnerj/working/guangxin/vasaseq
+CODE=$PROJ/code
+FV=$CODE/flashseq_vasa
+RES=$PROJ/res/flashseq_vasa
+
+# --- VASA side: the user's own plate ---
+VASA_OUT=$PROJ/data/PM26037/out
+VASA_CELLS=$VASA_OUT/cells
+VASA_STEP3_LOG=$VASA_OUT/logs/step3.log
+VASA_SAMPLE=ZHA9292A1
+
+# --- VASA side: the published plate, for reference ---
+PUB_BAMS=$PROJ/data/ref/fastq_vasaplate/rrna_validation/unique_rRNA_human_mouse.v2
+
+# --- FLASH-seq side ---
+FS_CODE=$CODE/flashseq
+FS_META=$FS_CODE/sample_metadata.tsv
+FS_RRNA_BWA=$PROJ/res/flashseq/rrna_bwa.tsv
+FS_SCRATCH=/nemo/lab/turnerj/scratch/zhangg/vasaseq/flashseq_vasa
+
+# --- shared reference ---
+RRNA_FA=/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116/unique_rRNA_mouse.v2.fa
+REF_BED=/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed
+
+# --- environment ---
+CONDA_SH=/camp/apps/eb/software/Anaconda3/2024.10-1/etc/profile.d/conda.sh
+VASA_ENV=/nemo/lab/turnerj/working/guangxin/envs/vasa
+
+mkdir -p "$RES"
+echo "PROJ = $PROJ"
+echo "RES  = $RES"
+```
+
+Versions and reference identity, echoed rather than assumed. Version drift is the
+most common reason a re-run diverges and it is invisible unless recorded.
+
+```{bash}
+#| label: setup-versions
+set -u
+source "$CONDA_SH"
+conda activate "$VASA_ENV"
+
+python3 -c "import sys, pandas, numpy, pysam; \
+print('python  ', sys.version.split()[0]); \
+print('pandas  ', pandas.__version__); \
+print('numpy   ', numpy.__version__); \
+print('pysam   ', pysam.__version__)"
+
+echo ""
+echo "rRNA reference : $(md5sum "$RRNA_FA" | cut -c1-32)  $(basename "$RRNA_FA")"
+echo "annotation BED : $(md5sum "$REF_BED" | cut -c1-32)  $(basename "$REF_BED")"
+echo "genome build   : GRCm39, Ensembl 116"
+```
+
+**pandas must stay on 2.x.** The upstream `countTables_fromPickle.py` calls
+`DataFrame.applymap`, which was deprecated in pandas 2.1 and **removed in 3.0**.
+If a re-run of this document reports pandas 3.x, the count-table stages will
+fail; rebuild the env pinned rather than "fixing" the upstream script.
+
+---
+
+## 2. Why the rRNA numbers are one measurement and not two
+
+This is the load-bearing methodological point of the whole comparison, so it is
+worth stating before any code.
+
+The FLASH-seq rRNA fraction was **not** computed with a FLASH-seq-specific tool.
+`code/flashseq/05_rrna_bwa.sh` invokes VASA's own `ribo-bwamem.sh` and
+`riboread-selection.py`, unmodified, against the same `unique_rRNA_mouse.v2.fa`,
+using both `bwa aln` and `bwa mem` exactly as upstream runs them. That was
+deliberate: `code/flashseq/config.sh` carries a warning that reimplementing the
+measurement would silently create a *second* method, at which point the two
+percentages would no longer be comparable.
+
+The classification `riboread-selection.py` performs is small enough to state in
+full. Copied verbatim from
+`code/I_Gene_expression/a_Mapping/riboread-selection.py` (upstream, unmodified —
+`git diff` against its first commit `8bee6f6` shows only a file-mode change):
+
+```{bash}
+#| label: show-upstream-predicate
+set -u
+sed -n '/^for i, r in enumerate/,/^        reads = \[r\]/p' \
+    "$CODE/I_Gene_expression/a_Mapping/riboread-selection.py" | head -30
+```
+
+Read in prose: alignments are grouped by read name; if **every** alignment in the
+group is unmapped the read is not ribosomal and goes to the non-ribosomal arm;
+otherwise `stranded='n'` counts it as ribosomal if *any* alignment mapped, and
+`stranded='y'` only if an alignment mapped on the **forward** strand.
+
+The grouping matters — a read with several alignments is one observation, not
+several — and so does the flag, which is the next section.
+
+---
+
+## 3. The strand flag, and why the two protocols use different ones
+
+`stranded=y` is correct for VASA and wrong for FLASH-seq, and this is measured
+rather than assumed.
+
+```{bash}
+#| label: strand-flag-provenance
+set -u
+echo "=== what the user's own VASA run used ==="
+grep -n -B1 "^STRANDED=" "$CODE/I_Gene_expression/own_version/config.sh"
+
+echo ""
+echo "=== what the published VASA code specifies ==="
+grep -n "^STRANDED=" "$CODE/I_Gene_expression/a_Mapping/run_mapping_stepwise.sh"
+grep -n 'set to "y"' "$CODE/I_Gene_expression/a_Mapping/README.md"
+
+echo ""
+echo "=== FLASH-seq forward-strand share of ribosomal reads (measured) ==="
+awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) h[$i]=i; next}
+            $h["arm"]=="trimmed"{printf "  %-12s fwd_pct=%s\n", $h["library"]?$1:$1, $(h["fwd_pct"])}' \
+    "$FS_RRNA_BWA" | head -10
+```
+
+FLASH-seq's ribosomal reads are split ~50/50 between strands, which is what an
+unstranded library should show. Applying `y` there would discard roughly half of
+its genuine ribosomal reads and report half the true rRNA content — penalising it
+for its chemistry rather than measuring its rRNA.
+
+**Decision (user, 2026-07-28): each protocol keeps its own correct flag** — VASA
+`y`, FLASH-seq `n`. The resulting ratio must always be quoted as *"each protocol
+under its own correct flag"*, never as a bare division. Section 5 gives the
+sensitivity to that choice.
+
+---
+
+## 4. Re-deriving the VASA rRNA fractions from the BAMs
+
+The step-3 log already reports a per-cell `ribo%`, but a number in a log is not a
+reproducible measurement. This chunk recomputes both predicates from the
+`.nsorted.all-ribo.bam` files and **asserts** the result against the log — if the
+predicate implemented here is not the one `riboread-selection.py` applied, this
+fails loudly rather than producing a plausible wrong number.
+
+The script is `verify_rrna_crossplate.py`, committed in `flashseq_vasa/`. It is
+reproduced here in full rather than pointed at, so this document stands alone.
+
+```{bash}
+#| label: write-verify-script
+set -u
+cat > "$RES/verify_rrna_crossplate_runbook.py" <<'PYEOF'
+#!/usr/bin/env python3
+"""Re-derive every cross-plate rRNA number from the BAMs and assert it.
+
+classify() is copied from ../I_Gene_expression/a_Mapping/riboread-selection.py so
+that what is tested is what upstream executed. It reproduces the classification
+only: the source also writes the fastq/bam and counts per-reference hits, none of
+which is needed for the fractions.
+"""
+import os, sys, re, glob
+import pysam
+
+
+def classify(group):
+    """-> (is_ribo_n, is_ribo_y) for one read's alignment group."""
+    if all(r.is_unmapped for r in group):
+        return (False, False)
+    ribo_n = True                                     # stranded='n': any mapped
+    ribo_y = any((not r.is_unmapped) and (not r.is_reverse) for r in group)
+    return (ribo_n, ribo_y)
+
+
+def count_bam(path):
+    bam = pysam.AlignmentFile(path, check_sq=False)
+    total = n_any = n_fwd = 0
+    cur, grp = None, []
+    for r in bam.fetch(until_eof=True):
+        if cur is None or r.qname == cur:
+            grp.append(r); cur = r.qname
+        else:
+            total += 1
+            a, f = classify(grp); n_any += a; n_fwd += f
+            grp = [r]; cur = r.qname
+    if grp:
+        total += 1
+        a, f = classify(grp); n_any += a; n_fwd += f
+    bam.close()
+    return total, n_any, n_fwd
+
+
+def parse_step3_log(path):
+    want = re.compile(r'^\s*(\d{3})\s+([\d,]+)\s+([\d,]+)\s+([\d.]+)%')
+    out = {}
+    for line in open(path):
+        m = want.match(line)
+        if m:
+            out[m.group(1)] = float(m.group(4))
+    return out
+
+
+def summarise(d, label, blanks=()):
+    real = {k: v for k, v in d.items() if k not in blanks}
+    py = sorted(v['pct_y'] for v in real.values())
+    fw = sorted(v['fwd'] for v in real.values())
+    med = lambda a: a[len(a)//2] if len(a) % 2 else 0.5*(a[len(a)//2-1]+a[len(a)//2])
+    tot = sum(v['total'] for v in d.values())
+    ry = sum(v['ribo_y'] for v in d.values())
+    print(f"{label}")
+    print(f"    n={len(real)}  pct_y  min={py[0]:.3f}  median={med(py):.3f}  max={py[-1]:.3f}")
+    print(f"              fwd    min={fw[0]:.2f}   median={med(fw):.2f}   max={fw[-1]:.2f}")
+    print(f"    read-weighted over ALL entries: {100*ry/tot:.3f}%  ({ry:,} / {tot:,})")
+    return dict(median_y=med(py), min_y=py[0], max_y=py[-1],
+                median_fwd=med(fw), weighted=100*ry/tot)
+
+
+def collect(pattern, idre):
+    out = {}
+    for b in sorted(glob.glob(pattern)):
+        m = re.search(idre, os.path.basename(b))
+        cc = m.group(1) if m else os.path.basename(b)
+        t, na, nf = count_bam(b)
+        out[cc] = dict(total=t, ribo_n=na, ribo_y=nf,
+                       pct_n=100.0*na/t if t else 0.0,
+                       pct_y=100.0*nf/t if t else 0.0,
+                       fwd=100.0*nf/na if na else 0.0)
+    return out
+
+
+def main():
+    own_dir, pub_dir, step3_log, outdir = sys.argv[1:5]
+    fail = []
+
+    own = collect(os.path.join(own_dir, '*.nsorted.all-ribo.bam'), r'_(\d{3})_')
+    pub = collect(os.path.join(pub_dir, '*.nsorted.all-ribo.bam'), r'_(\d{3})\.')
+
+    print("=" * 74)
+    print("CHECK: does our stranded=y predicate reproduce step3.log?")
+    print("=" * 74)
+    log = parse_step3_log(step3_log)
+    worst = 0.0
+    for cc in sorted(log):
+        if cc not in own:
+            continue
+        d = abs(own[cc]['pct_y'] - log[cc])
+        worst = max(worst, d)
+        print(f"  {'x' if d > 0.01 else ' '} {cc}  ours={own[cc]['pct_y']:7.3f}"
+              f"  log={log[cc]:7.3f}  |diff|={d:.4f}")
+    print(f"  worst |deviation| = {worst:.4f} percentage points")
+    if worst > 0.01:
+        fail.append(f"predicate does not reproduce step3.log (worst {worst:.4f} pp)")
+    else:
+        print("  -> PASS: same predicate, to within log rounding.")
+
+    BLANKS = {'001', '014', '015', '016'}
+    print()
+    print("=" * 74)
+    print("MEASUREMENTS")
+    print("=" * 74)
+    o = summarise(own, "VASA own plate (blanks excluded from per-cell stats)", BLANKS)
+    print()
+    p = summarise(pub, "VASA published plate SRR14783059")
+
+    print()
+    print("=" * 74)
+    print("DERIVED RATIOS -- state which one you mean; they are not interchangeable")
+    print("=" * 74)
+    print(f"  median ratio (own / published) = {o['median_y']/p['median_y']:.3f}x")
+    print(f"  pooled ratio (own / published) = {o['weighted']/p['weighted']:.3f}x")
+    ps = p['max_y']/p['min_y']; os_ = o['max_y']/o['min_y']
+    print(f"  spread published = {ps:.2f}x   own = {os_:.2f}x   own tighter by {ps/os_:.1f}x")
+    print("  (the two ratios differ because the published cells span 64k-1.26M reads,")
+    print("   so pooling weights the deep cells)")
+
+    for name, d in (('verify_own_percell.tsv', own),
+                    ('verify_published_percell.tsv', pub)):
+        with open(os.path.join(outdir, name), 'w') as fh:
+            fh.write('cell\ttotal\tribo_n\tribo_y\tpct_n\tpct_y\tfwd_share\n')
+            for cc in sorted(d):
+                v = d[cc]
+                fh.write(f"{cc}\t{v['total']}\t{v['ribo_n']}\t{v['ribo_y']}"
+                         f"\t{v['pct_n']:.4f}\t{v['pct_y']:.4f}\t{v['fwd']:.2f}\n")
+        print(f"\nwrote {name} ({len(d)} rows)")
+
+    print()
+    if fail:
+        print("FAIL:")
+        for f in fail:
+            print("  x", f)
+        sys.exit(1)
+    print("PASS -- every number above is reproduced from the BAMs.")
+
+
+if __name__ == '__main__':
+    main()
+PYEOF
+echo "wrote $RES/verify_rrna_crossplate_runbook.py"
+```
+
+This reads every `.nsorted.all-ribo.bam` on both plates, so it wants a compute
+node rather than a login shell. It took about 12 minutes as job `0f559630`.
+
+```{bash}
+#| label: run-verify
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+
+python3 "$RES/verify_rrna_crossplate_runbook.py" \
+    "$VASA_CELLS" "$PUB_BAMS" "$VASA_STEP3_LOG" "$RES" \
+    | tee "$RES/verify_runbook.txt"
+```
+
+**What that output establishes.** The predicate reimplemented here reproduces
+step 3's own `ribo%` for **all 16 barcodes to within 0.005 percentage points** —
+that is the check that makes every other figure in this section trustworthy,
+because it proves the classification is upstream's and not merely a plausible
+one.
+
+The user's own plate reads **21.14% median** across its 12 real cells
+(17.99–25.09%), and **21.39%** read-weighted over all 16 barcodes. The published
+plate reads **9.90% median** (1.33–26.42%), **9.19%** pooled.
+
+So this plate carries about **2.1× more rRNA on medians** (2.33× pooled) than the
+published one — but with a **14× tighter spread** across cells. Both facts
+matter: a high mean with a tight spread is a systematic offset, which is the kind
+of thing that can be tuned; a low mean with a 20-fold spread is variable
+depletion. Note also that the two ratios differ because the published cells span
+64 k–1.26 M reads, so pooling weights the deep ones. Say which you mean.
+
+**Caveat that must travel with the 2.1×:** the published side is the 8 cells a
+prior session pulled for rRNA-reference validation, not a random sample of the
+published experiment, and it was run against the human/mouse mixed reference
+where this plate used mouse-only. Real signal, provisional magnitude.
+
+---
+
+## 5. Assembling the rRNA comparison table
+
+Now the FLASH-seq side joins in. The FLASH-seq figures come from
+`res/flashseq/rrna_bwa.tsv`, produced by `05_rrna_bwa.sh` as job `50855065` —
+that run streams every FASTQ through `bwa` twice and is not repeated here; it
+takes about 46 minutes.
+
+Every row of the output table carries its strand flag and the rationale for it,
+so no downstream reader can compare two rows that were counted differently
+without noticing.
+
+```{bash}
+#| label: build-rrna-table
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+
+cat > "$RES/mk_rrna_comparison.py" <<'PYEOF'
+import sys
+import numpy as np
+import pandas as pd
+
+FS_RRNA_BWA, FS_META, RES = sys.argv[1], sys.argv[2], sys.argv[3]
+
+fs = pd.read_csv(FS_RRNA_BWA, sep='\t')
+fs.columns = [c.strip() for c in fs.columns]
+meta = pd.read_csv(FS_META, sep='\t', comment='#')
+own = pd.read_csv(f'{RES}/verify_own_percell.tsv', sep='\t', dtype={'cell': str})
+pub = pd.read_csv(f'{RES}/verify_published_percell.tsv', sep='\t', dtype={'cell': str})
+
+# the trimmed arm is the one that fed everything downstream
+fst = fs[fs.arm.astype(str).str.strip() == 'trimmed'].copy()
+qcv = meta.set_index('library').qc_verdict.to_dict()
+BLANK = {'001', '014', '015', '016'}
+rows = []
+
+for _, r in fst.iterrows():
+    rows.append(dict(
+        dataset='FLASH-seq RN26038', unit=r.library, group=str(r.input_amount).strip(),
+        well=r.well, reads_in=int(r.reads_in), rrna_pct=float(r.ribo_pct),
+        strand_flag='n',
+        flag_rationale='unstranded library; forward strand carries %.1f%% of ribosomal reads' % r.fwd_pct,
+        rrna_pct_other_flag=float(r.ribo_pct_stranded_y),
+        pct_5ETS=float(r['pct_5ETS']), pct_18S=float(r['pct_18S']),
+        pct_ITS1=float(r['pct_ITS1']), pct_5_8S=float(r['pct_5.8S']),
+        pct_ITS2=float(r['pct_ITS2']), pct_28S=float(r['pct_28S']),
+        pct_mito=float(r['pct_mito']), pct_other=float(r['pct_other']),
+        qc_verdict=qcv.get(r.library, ''),
+        source='res/flashseq/rrna_bwa.tsv (trimmed arm), job 50855065'))
+
+for _, r in own.iterrows():
+    blank = r.cell in BLANK
+    rows.append(dict(
+        dataset='VASA ZHA9292A1 (own)', unit='cell_%s' % r.cell,
+        group='blank' if blank else 'real cell', well='',
+        reads_in=int(r.total), rrna_pct=float(r.pct_y), strand_flag='y',
+        flag_rationale='stranded protocol; the published VASA code specifies y (fwd share %.1f%%)' % r.fwd_share,
+        rrna_pct_other_flag=float(r.pct_n),
+        pct_5ETS=np.nan, pct_18S=np.nan, pct_ITS1=np.nan, pct_5_8S=np.nan,
+        pct_ITS2=np.nan, pct_28S=np.nan, pct_mito=np.nan, pct_other=np.nan,
+        qc_verdict='exclude (confirmed blank)' if blank else 'ok',
+        source='verify_rrna_crossplate.py; reproduces step3.log to 0.005pp'))
+
+for _, r in pub.iterrows():
+    rows.append(dict(
+        dataset='VASA SRR14783059 (published)', unit='cell_%s' % r.cell,
+        group='published cell', well='',
+        reads_in=int(r.total), rrna_pct=float(r.pct_y), strand_flag='y',
+        flag_rationale='stranded protocol (fwd share %.1f%%)' % r.fwd_share,
+        rrna_pct_other_flag=float(r.pct_n),
+        pct_5ETS=np.nan, pct_18S=np.nan, pct_ITS1=np.nan, pct_5_8S=np.nan,
+        pct_ITS2=np.nan, pct_28S=np.nan, pct_mito=np.nan, pct_other=np.nan,
+        qc_verdict='reference',
+        source='verify_rrna_crossplate.py; human/mouse mixed rRNA reference'))
+
+rr = pd.DataFrame(rows)
+rr.to_csv(f'{RES}/rrna_comparison.tsv', sep='\t', index=False)
+
+def agg(m, label):
+    d = rr[m]
+    return dict(subset=label, n=len(d), min=round(d.rrna_pct.min(), 3),
+                median=round(d.rrna_pct.median(), 3), max=round(d.rrna_pct.max(), 3),
+                read_weighted_pct=round((d.rrna_pct*d.reads_in).sum()/d.reads_in.sum(), 3),
+                total_reads=int(d.reads_in.sum()))
+
+isFS = rr.dataset.str.startswith('FLASH')
+summ = pd.DataFrame([
+    agg(isFS & (rr.qc_verdict != 'exclude'), 'FLASH-seq, 9 libraries (A8 excluded), stranded=n'),
+    agg(isFS, 'FLASH-seq, all 10 incl. A8, stranded=n'),
+    agg(isFS & (rr.group == '30 pg'), 'FLASH-seq 30 pg rung A9+A10, stranded=n'),
+    agg(rr.dataset.str.contains('own') & (rr.group == 'real cell'), 'VASA own, 12 real cells, stranded=y'),
+    agg(rr.dataset.str.contains('own'), 'VASA own, all 16 barcodes, stranded=y'),
+    agg(rr.dataset.str.contains('published'), 'VASA published, 8 cells, stranded=y'),
+])
+summ.to_csv(f'{RES}/rrna_comparison_summary.tsv', sep='\t', index=False)
+print(summ.to_string(index=False))
+
+fs9 = rr[isFS & (rr.qc_verdict != 'exclude')]
+ov = rr[rr.dataset.str.contains('own') & (rr.group == 'real cell')]
+print()
+print('HEADLINE -- each protocol under its OWN correct flag:')
+print('  VASA (y)      median %.2f%%  range %.2f-%.2f%%'
+      % (ov.rrna_pct.median(), ov.rrna_pct.min(), ov.rrna_pct.max()))
+print('  FLASH-seq (n) median %.2f%%  range %.2f-%.2f%%'
+      % (fs9.rrna_pct.median(), fs9.rrna_pct.min(), fs9.rrna_pct.max()))
+print('  ratio of medians = %.2fx' % (ov.rrna_pct.median()/fs9.rrna_pct.median()))
+print()
+print('SENSITIVITY to the flag pairing (both figures measured, not assumed):')
+print('  VASA y / FS n  (each correct)  = %.2fx' % (ov.rrna_pct.median()/fs9.rrna_pct.median()))
+print('  both n                         = %.2fx'
+      % (ov.rrna_pct_other_flag.median()/fs9.rrna_pct.median()))
+print('  both y                         = %.2fx'
+      % (ov.rrna_pct.median()/fs9.rrna_pct_other_flag.median()))
+print()
+print('SELF-CHECK: all-16 read-weighted must reproduce step3.log whole-library 21.39%%')
+w = summ[summ.subset.str.contains('all 16')].read_weighted_pct.iloc[0]
+print('  computed %.3f%%  ->  %s' % (w, 'MATCH' if abs(w-21.39) < 0.02 else 'MISMATCH'))
+
+print()
+print('FLASH-seq subunit composition, %% of ribosomal reads (9 libraries):')
+for col, lab in [('pct_5ETS', "5'ETS"), ('pct_28S', '28S'), ('pct_18S', '18S'),
+                 ('pct_ITS2', 'ITS2'), ('pct_ITS1', 'ITS1'), ('pct_5_8S', '5.8S'),
+                 ('pct_mito', 'mito'), ('pct_other', 'other')]:
+    v = fs9[col].dropna()
+    print('  %-6s %6.2f - %6.2f   median %6.2f' % (lab, v.min(), v.max(), v.median()))
+print()
+print('rows written: %d' % len(rr))
+PYEOF
+
+python3 "$RES/mk_rrna_comparison.py" "$FS_RRNA_BWA" "$FS_META" "$RES" \
+    | tee "$RES/rrna_comparison_report.txt"
+```
+
+**The headline.** FLASH-seq **4.70%** median (3.50–6.44%, 9 libraries with A8
+excluded) against this VASA plate's **21.14%** (17.99–25.09%, 12 real cells) =
+**4.50×**.
+
+The sensitivity block shows why the flag pairing had to be a stated decision
+rather than a default: the same two datasets give **4.50×** with each protocol
+under its own correct flag, **6.08×** with both `n`, and **8.95×** with both `y`.
+The flag alone moves the answer by a factor of two.
+
+The self-check line is there so the table cannot silently drift: the read-weighted
+all-16-barcode figure is recomputed by a different route from step 3's own
+whole-library number and must land on **21.39%**.
+
+**Where the residual rRNA sits.** Most of what survives poly-A selection in
+FLASH-seq is **pre-rRNA, not mature rRNA** — 5'ETS is the largest segment at
+~41% of ribosomal reads, against 28S at ~26%. That is mechanistically sensible:
+the 47S precursor is transient and carries non-templated ends, so it is more
+poly-A-accessible than mature 28S. It also locates the protocol gap in mature
+28S, which is precisely where VASA's in-silico depletion has the most to remove.
+
+**Do not use the annotation route for rRNA.** Ensembl's `rRNA` biotype reads
+0.47–1.40% where this alignment route reads 3.50–6.44%. On GRCm39 the rDNA array
+is collapsed out of the primary assembly, so there is no `Rn45s`, `Rn28s` or
+`Rn5-8s` gene, and 99.93–99.999% of that class's signal comes from a single 18S
+relic locus, `Rn18s-rs5` (`ENSMUSG00000119584`).
+
+```{bash}
+#| label: rrna-biotype-is-not-rrna
+set -u
+GTF=/nemo/lab/turnerj/working/guangxin/reference/genomes/mus_musculus/GRCm39/annotation/release-116/gtf/Mus_musculus.GRCm39.116.gtf
+awk -F'\t' '$3=="gene" && $9~/gene_biotype "rRNA"/' "$GTF" \
+  | grep -o 'gene_name "[^"]*"' | sed 's/gene_name //; s/"//g' \
+  | sed 's/[0-9-]*$//' | sort | uniq -c | sort -rn | head -6
+echo ""
+echo "Rn45s / Rn28s / Rn5-8s present in the rRNA biotype?"
+awk -F'\t' '$3=="gene" && $9~/gene_biotype "rRNA"/' "$GTF" \
+  | grep -cE 'gene_name "(Rn45s|Rn28s|Rn5-8s)"' || echo "0  (as expected)"
+```
+
+---
+
+## 6. The read-length control
+
+### Why it was necessary
+
+The naive result was that FLASH-seq detects **zero tRNA**. That is not a finding
+about chemistry.
+
+VASA's assignment rule `jS:IN` requires a read to be **contained within** the
+annotated feature. At 151 nt a FLASH-seq read cannot sit inside most small RNAs.
+Measure that directly against the annotation both protocols share:
+
+```{bash}
+#| label: feature-lengths-vs-read-length
+set -u
+zcat -f "$REF_BED" 2>/dev/null | awk -F'\t' '
+  {
+    n = split($4, a, "_"); bt = a[n]; len = $3 - $2
+    tot[bt]++; if (len < 151) short[bt]++
+  }
+  END {
+    printf "%-10s %8s %8s %7s\n", "biotype", "features", "<151nt", "pct"
+    split("tRNA rRNA miRNA snoRNA snRNA ProteinCoding lncRNA", want, " ")
+    for (i in want) {
+      bt = want[i]
+      if (tot[bt] > 0)
+        printf "%-10s %8d %8d %6.1f%%\n", bt, tot[bt], short[bt], 100*short[bt]/tot[bt]
+    }
+  }'
+```
+
+So a 151 nt library reports few or no reads for these classes **whatever the
+chemistry did**. Without a control, "FLASH-seq detects fewer short species" is
+unfalsifiable — and it is half of what the comparison was asked to answer.
+
+### The design
+
+Both arms were quantified through VASA's own step 4–7, identical in every setting
+**except read length**:
+
+- **`native`** — adapter-trimmed R1 at its natural length
+- **`vasalen`** — additionally hard-trimmed to VASA's aligned-length distribution
+
+The target distribution was measured from VASA's own STAR-input FASTQs rather than
+assumed from the ~23.7 nt mean in the step-3 log:
+
+```{bash}
+#| label: vasa-target-length
+set -u
+head -25 "$RES/vasa_readlen_report.txt" 2>/dev/null \
+  || echo "(vasa_readlen_report.txt not present -- produced by measure_vasa_readlen.py)"
+```
+
+Three constraints from the dry run govern how both arms are run, and each would
+have wasted the ten-library pass if discovered late. They are recorded in
+`flashseq_vasa/NOUMI_PATH.md`; the essential ones are:
+
+- **Map R1 only.** `bedtools bamtobed` appends `/1`,`/2` to paired-end read names,
+  and `deal_with_*mappers.sh` appends `;CG:…;nM:<n>` *before* bamtobed runs, so
+  the mate suffix lands on the end of the `nM` value and step 6's `int()` raises.
+  Measured 1,033,528 of 1,033,528 PE rows unparseable against 0 of 534,978 SE.
+  This is upstream's contract, so `a_Mapping/` is not patched.
+- **Use `ReadCounts` only.** With one literal UMI key `'A'`, `UFICounts`
+  degenerates to a 0/1 detection mask and `bc2trans` is the identity on a mask,
+  so `TranscriptCounts == UFICounts` elementwise. Both are still written and
+  carry no abundance information.
+- **`stranded=n`, `filt_unigenes=n`, `CELLID_FROM=f`** with `_cbc` in the stem.
+
+### The measurement
+
+The mapping and step-6 stages behind this take 7–10 hours per library, so they
+are not re-run here. The chunk below reads their output and computes the
+comparison. Non-executable reproduction commands for the heavy stages are in
+section 8.
+
+```{bash}
+#| label: shortbiotype-recovery
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+
+cat > "$RES/mk_shortbiotype.py" <<'PYEOF'
+import os, sys
+import numpy as np
+import pandas as pd
+
+S, RES, TAG = sys.argv[1], sys.argv[2], sys.argv[3]
+SHORT = ['tRNA', 'miRNA', 'snoRNA', 'snRNA', 'MiscRna', 'ribozyme', 'scaRNA']
+rows, comp = [], []
+
+for arm in ('native', 'vasalen'):
+    f = f'{S}/{arm}/{TAG}_{arm}_total.ReadCounts.tsv'
+    if not os.path.exists(f):
+        print('MISSING', f)
+        continue
+    df = pd.read_csv(f, sep='\t', index_col=0)
+    df.columns = [c.replace('cells/', '') for c in df.columns]
+    bio = pd.Series([str(i).rsplit('_', 1)[-1] if '_' in str(i) else 'NA'
+                     for i in df.index], index=df.index)
+    # non-rRNA denominator: the user's decision is rRNA as % of all reads,
+    # every other class as % of the non-rRNA remainder
+    nonr = df[~bio.isin(['rRNA', 'Mt_rRNA'])]
+    tot = nonr.values.sum()
+    print(f'\n=== arm={arm}  entries={len(df)}  libraries={list(df.columns)}')
+    print(f'    non-rRNA denominator = {tot:,.0f} reads')
+    for b in SHORT:
+        m = bio == b
+        n_e = int(m.sum())
+        rd = float(df[m].values.sum()) if n_e else 0.0
+        det = int((df[m].sum(axis=1) > 0).sum()) if n_e else 0
+        rows.append(dict(arm=arm, biotype=b, entries=n_e, entries_detected=det,
+                         reads=rd, pct_of_nonrRNA=100*rd/tot if tot else 0))
+        print(f'  {b:9s} entries={n_e:6d} detected={det:6d} reads={rd:12,.0f}'
+              f'  {100*rd/tot if tot else 0:8.4f}% of non-rRNA')
+    for b, g in nonr.groupby(bio[nonr.index]):
+        comp.append(dict(arm=arm, biotype=b, reads=float(g.values.sum()),
+                         pct_of_nonrRNA=100*float(g.values.sum())/tot))
+
+if not rows:
+    sys.exit('no arm tables found -- run the mapping stages first')
+
+sb = pd.DataFrame(rows)
+p = sb.pivot(index='biotype', columns='arm', values=['entries_detected', 'reads', 'pct_of_nonrRNA'])
+det, rds = p['entries_detected'], p['reads']
+out = pd.DataFrame({
+    'native_detected': det['native'].astype(int),
+    'vasalen_detected': det['vasalen'].astype(int),
+    'fold_entries': (det['vasalen']/det['native'].replace(0, np.nan)).round(2),
+    'native_reads': rds['native'].astype(int),
+    'vasalen_reads': rds['vasalen'].astype(int),
+    'fold_reads': (rds['vasalen']/rds['native'].replace(0, np.nan)).round(2),
+    'native_pct_nonrRNA': p['pct_of_nonrRNA']['native'].round(4),
+    'vasalen_pct_nonrRNA': p['pct_of_nonrRNA']['vasalen'].round(4),
+}).sort_values('fold_entries', ascending=False)
+out.to_csv(f'{RES}/shortbiotype_readlength6.tsv', sep='\t')
+print()
+print('=== short-biotype recovery, native -> VASA-matched length ===')
+print(out.to_string())
+
+cc = pd.DataFrame(comp).pivot(index='biotype', columns='arm', values='pct_of_nonrRNA').fillna(0)
+cc['delta_pp'] = (cc.vasalen - cc.native).round(3)
+cc.to_csv(f'{RES}/composition6_nonrRNA.tsv', sep='\t')
+print()
+print('=== composition on the non-rRNA denominator (top 10) ===')
+print(cc.sort_values('native', ascending=False).head(10).round(3).to_string())
+PYEOF
+
+python3 "$RES/mk_shortbiotype.py" "$FS_SCRATCH" "$RES" FSprov6 \
+    | tee "$RES/shortbiotype_report.txt"
+```
+
+**Result: length-matching recovers much of the gap.** Six libraries are complete
+in both arms (A1, A3, A4, A5, A8, A9 — including A9, the 30 pg
+single-cell-equivalent rung). Entries detected rise **1.5–2.2×** when reads are
+trimmed to VASA's length: ribozyme 2.20×, snRNA 1.87×, miRNA 1.86×, snoRNA 1.70×,
+MiscRna 1.64×, scaRNA 1.50×.
+
+The conclusion is **stable under the n=4 → n=6 upgrade** — every fold moved by
+≤0.30 and the ordering is essentially unchanged, which is the check that matters
+for a result reported before all ten libraries were in.
+
+One nuance worth keeping: *MiscRna* recovers **entries** (1.64×) but not **reads**
+(0.96×). Trimming finds more distinct loci while splitting the same read mass
+across them, so for abundant classes "recovery" means detection breadth, not extra
+signal.
+
+### The mechanism, measured directly
+
+If read length is the cause, then trimming should move both the read-length
+distribution *and* the containment rate toward VASA. It does:
+
+```{bash}
+#| label: containment-mechanism
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+
+cat > "$RES/lenchk.py" <<'PYEOF'
+import glob, gzip, sys
+import numpy as np
+
+def stats(pattern, label, cap=500000):
+    fs = sorted(glob.glob(pattern))
+    if not fs:
+        print(f'{label}: NO FILES  ({pattern})')
+        return None
+    L, jsin, n = [], 0, 0
+    for f in fs:
+        with gzip.open(f, 'rt') as fh:
+            for line in fh:
+                p = line.rstrip('\n').split('\t')
+                if len(p) < 3:
+                    continue
+                L.append(int(p[2]) - int(p[1])); n += 1
+                if ';jS:IN' in line:
+                    jsin += 1
+                if n >= cap:
+                    break
+        if n >= cap:
+            break
+    a = np.array(L)
+    print(label)
+    print(f'    n={len(a):,}  median={np.median(a):.0f}')
+    print(f'    >=140nt: {100*(a>=140).mean():5.1f}%    jS:IN rate: {100*jsin/n:5.1f}%')
+    return a
+
+S, V = sys.argv[1], sys.argv[2]
+print('=== aligned length of the BED rows that fed step 6 (library A9) ===')
+stats(f'{S}/native/pickle/ZHA8833A9/cells/*singlemappers_genes.bed.gz',  'FLASH-seq A9  native')
+stats(f'{S}/vasalen/pickle/ZHA8833A9/cells/*singlemappers_genes.bed.gz', 'FLASH-seq A9  VASA-trimmed')
+stats(f'{V}/*_005_*singlemappers_genes.bed.gz',                          'VASA cell 005')
+PYEOF
+
+python3 "$RES/lenchk.py" "$FS_SCRATCH" "$VASA_CELLS" | tee "$RES/readlen_check.txt"
+```
+
+Reads `≥140 nt` fall from **82.4%** to **55.4%** against VASA's **44.5%**, and the
+`jS:IN` containment rate rises from **45.7%** to **52.0%** against VASA's
+**55.7%**. Both move in the predicted direction.
+
+### What this licenses, and what it does not
+
+**Established:** the mechanism operates and it is large. A 151 nt library
+under-reports short RNA classes for reasons that have nothing to do with the
+protocol's chemistry.
+
+**Not established:** that read length explains the *whole* gap. Recovery is
+partial — the trimmed arm still sits short of VASA on both metrics, and tRNA
+remains absent from the biotype scan even though the dedicated tRNA table nearly
+doubled (27 → 46 rows, 361 → 754 reads at n=4).
+
+**So the short-species axis is confounded, not resolved.** "FLASH-seq detects
+fewer short non-poly-A RNAs than VASA" is **not** a claim this data supports yet.
+What it supports is: *at matched read length FLASH-seq still detects fewer, but
+the native-length difference overstates it by roughly 1.4–2.5× depending on
+class.*
+
+---
+
+## 7. Composition on the non-rRNA denominator — partial
+
+The chunk in section 6 also wrote `composition6_nonrRNA.tsv`. On six libraries,
+FLASH-seq is **84.15%** protein-coding of non-rRNA reads at native length, which
+is what a poly-A library should look like.
+
+The number to carry forward is not that one, though — it is the **Δ pp** column.
+Read length **alone** moves ProteinCoding by **−2.6 pp** and pushes the
+pseudogene classes up, because shorter reads are less uniquely assignable so some
+protein-coding mass redistributes to paralogous pseudogenes.
+
+**Therefore: any FLASH-seq↔VASA composition difference smaller than about 3 pp is
+inside the read-length effect and must not be attributed to protocol.**
+
+The VASA side of this comparison is still missing, and one decision is already
+settled for when it lands: **use the unfiltered `uniagg` VASA tables**, not
+`data/PM26037/out/analysis/`. The UMI-ceiling filter there drops 8 entries —
+*Rmrp*, *Rn7sk*, *Rn7s1*/*Rn7s2*, *Rnu1a1*, *Rnu1b6*, *Rnu2.10*, the *Snord3b*
+cluster and a *Cmss1* pair — carrying **23.02% of uniagg reads**, whose removal
+shifts ProteinCoding by **+19.19 pp**. They were selected precisely *for*
+saturating the UMI ceiling, i.e. for being the most abundant small RNAs, which is
+what a total-RNA protocol exists to capture. Correct for molecule counting, wrong
+for a reads-vs-reads comparison.
+
+---
+
+## 8. The heavy stages — not executed here
+
+These produced the inputs section 6 reads. They are **not** in a runnable chunk
+because each takes hours and the last four libraries were still building when this
+was written. Reproduction commands, for completeness:
+
+```bash
+# One arm at a time. FSV_ARM selects the read-length treatment; every other
+# setting is identical between arms, which is what makes the comparison a control.
+cd /nemo/lab/turnerj/working/guangxin/vasaseq
+
+for ARM in native vasalen; do
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh check     # config + input validation
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh prep      # cutadapt (+ hard-trim for vasalen)
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh map       # STAR, R1 only, star_index_151_r116
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh assign    # deal_with_{single,multi}mappers.sh, stranded=n
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh pickle1   # step 6, ONE LIBRARY AT A TIME
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh pickle_merge
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh tables    # step 7, protocol=smartseq_noUMI
+  FSV_ARM=$ARM code/flashseq_vasa/pipeline_fs.sh recon
+done
+```
+
+**Observed resource use**, so a re-run can be sized rather than guessed:
+
+| stage | observed |
+|---|---|
+| step 6, per library | 7 h 40 m – 10 h 05 m wall, 39–59 GB MaxRSS |
+| step 6, 6 concurrent on one node | ~220 GB RSS against a 650 G request |
+| step 7 (VASA side, 16 barcodes) | 32 m, 13.0 GB — a 200 G request was 15× over |
+| `05_rrna_bwa.sh` (job `50855065`) | 46 m, 778 MB |
+
+Step 6 is **superlinear in BED size** (69 MB → 28 m; 254 MB → 1 h 47 m on the
+VASA side), which is why it is run per library and merged rather than in one pass:
+eight libraries resident at once would be ~250 GB in a single process, and any
+failure would lose the whole run.
+
+`merge_pickles.py` reproduces upstream step 6's parent tail exactly — the union of
+per-library dicts **is** the frame a combined run would have built, because
+`get_cellDict` is per-library independent. It asserts the three properties that
+make the equivalence hold (disjoint column keys, non-empty inputs, unioned row
+keys) rather than assuming them.
+
+---
+
+## 9. What may and may not be claimed
+
+**May be claimed:**
+
+- FLASH-seq carries about **4.5× less rRNA** than this VASA plate, measured by one
+  method, each protocol under its own correct strand flag. State the flags.
+- Most of FLASH-seq's residual rRNA is **pre-rRNA (5'ETS ~41% of ribosomal
+  reads)**, not mature 28S (~26%).
+- This VASA plate carries **~2.1× more rRNA than the published plate** on medians,
+  with a **14× tighter spread** — a systematic offset rather than variable
+  depletion. Provisional magnitude (8 non-random published cells, mixed
+  reference).
+- Read length **materially suppresses** short-RNA detection at 151 nt: matching
+  VASA's length recovers **1.5–2.2×** more entries.
+
+**May not be claimed:**
+
+- That FLASH-seq detects fewer short non-poly-A RNAs **because of its chemistry**.
+  Recovery on length-matching is partial, so the axis is confounded.
+- Any composition difference against VASA smaller than **~3 pp**, which is inside
+  the read-length effect.
+- Anything from `TranscriptCounts` or `UFICounts` on the FLASH-seq side — they are
+  a detection mask, not abundance.
+- Any rRNA figure from the Ensembl `rRNA` biotype; on GRCm39 that class is
+  essentially one 18S relic locus.
+
+```{bash}
+#| label: phase-complete
+set -u
+echo "outputs in $RES:"
+ls -1 "$RES"/rrna_comparison*.tsv "$RES"/shortbiotype_readlength6.tsv \
+      "$RES"/composition6_nonrRNA.tsv "$RES"/verify_*_percell.tsv 2>/dev/null \
+  | sed 's|.*/|  |'
+echo ""
+echo "PHASE_COMPLETE"
+```
+
+---
+
+## Appendix: approaches tried and rejected
+
+Kept because each cost real time and the reasoning decays fastest.
+
+### Paired-end mapping through VASA's step 5–6
+Discarded, structurally. `bedtools bamtobed` appends `/1`,`/2` to the read name
+and `deal_with_*mappers.sh` appends `;CG:…;nM:<n>` before bamtobed runs, so the
+mate suffix lands on the end of the `nM` value and step 6's `int()` raises.
+Measured **1,033,528 of 1,033,528 PE rows unparseable** against 0 of 534,978 SE.
+Upstream's contract, so `a_Mapping/` was not patched — R1 only.
+
+### The Ensembl `rRNA` biotype as the rRNA measurement
+Reads 0.47–1.40% against 3.50–6.44% from alignment. The rDNA array is collapsed
+out of GRCm39's primary assembly, and 99.93–99.999% of that biotype's signal is
+one 18S relic locus (`Rn18s-rs5`). Also documented once as "essentially all 5S" —
+**that was wrong**, and the correction is in `NFCORE_CROSSCHECK.md`.
+
+### `TranscriptCounts` from the `smartseq_noUMI` path
+Discarded as meaningless, but not for the reason first assumed. `bc2trans` is
+applied to the UFI table, not to read counts — and with one literal UMI key the
+UFI table is a 0/1 mask, on which `bc2trans` is the identity (`bc2trans(1)=1.0`).
+So `TranscriptCounts == UFICounts` elementwise, verified. Nine TSVs of each are
+still written; use `ReadCounts`.
+
+### Comparing the two protocols' rRNA under one strand flag
+Rejected as the headline. VASA's forward-strand share of ribosomal reads is
+**76.1%**, FLASH-seq's ~**50%**, so no single flag treats both fairly: `y`
+discards 23.9% of one and 50.6% of the other. All three pairings are reported
+(4.50× / 6.08× / 8.95×) with each protocol's own correct flag as the headline.
+
+### `filt_unigenes=y` on step 7 for the ten-library run
+Rejected. The threshold is `ncells = max(5, round(0.01*ncols))`, written for a
+384-cell plate. At 10 libraries it demands 50% of them, and at 1 it demands 5 of
+1, so no gene passes and `reduceGeneName` silently loses its "exactly one
+component is a known unigene" rule.
+
+### `module load quarto/1.5.57-x64` to render this document
+Does not work on this host as of 2026-07-29: `ERROR: Unable to locate a modulefile
+for 'quarto/1.5.57-x64'`. The binary exists at
+`/camp/apps/eb/software/quarto/1.5.57-x64/bin/quarto` (reports `1.5.57`) and is
+invoked by full path in `render_runbook_direct.sh`. Worth fixing in the
+`reproducible-runbook` skill, which documents the module form.
+
+### Attributing the `check` stage's 20/20 `MISS` to a filesystem outage
+**Retracted.** The `check` stage reported `MISS` for all 10 libraries in both arms
+on 2026-07-28 21:03 and does not reproduce — it now returns `OK` for all 10 in
+each arm, and `find_r1` reproduced step by step gives `n=1`, rc=0. Two wrong
+explanations were published before that: first that the glob missed the lane field
+(it does not — `ZHA8833A9_S*_R1_001.fastq.gz` matches
+`ZHA8833A9_S108_L007_R1_001.fastq.gz` uniquely, and the `ls` cited as evidence
+used a broader pattern), then that the delivery filesystem was briefly unreadable
+(never tested; the corroborating files cited do not exist at that path). **Cause
+remains unknown.** To diagnose it the `check` stage needs to log `find`'s exit
+status and a `stat` of `$FSV_FASTQ` on failure — a retrospective diagnosis is not
+available because that evidence was never captured.

@@ -53,8 +53,8 @@ carries **49.1–50.5%** of ribosomal reads, so `y` would discard half of its
 genuine rRNA and penalise it for its chemistry.
 
 **So 4.5× is a ratio of two correctly-flagged measurements, not a bare
-division. Never quote it as the latter.** For sensitivity: both `n` gives 5.9×,
-both `y` gives 9.0×. The asymmetry is real and measured — VASA's forward share is
+division. Never quote it as the latter.** For sensitivity: both `n` gives **6.08×**,
+both `y` gives **8.95×**. The asymmetry is real and measured — VASA's forward share is
 **76.1%**, not the ~50% an unstranded library shows, so the same flag removes
 23.9% of one library's ribosomal reads and 50.6% of the other's.
 

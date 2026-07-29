@@ -1116,6 +1116,118 @@ reads — trace signal, four orders of magnitude below VASA, **not zero**. State
 measured values rather than as "absent", because a handful of reads in a class is a
 different claim from none.
 
+## 13b. Gene detection and transcript coverage
+
+Two more axes, both computed with **one method on each side** — which is why
+`res/flashseq/gene_detection.tsv` is *not* used here: that table is correct but came
+from the nf-core RSEM matrices, so comparing it to VASA would compare two pipelines
+as well as two protocols.
+
+### Gene detection, depth-matched
+
+Detection saturates, and FLASH-seq libraries carry 16–22 M reads against VASA cells
+at 0.8–5.3 M, so raw counts are not comparable. Every unit is therefore also thinned
+to a common depth by the binomial-thinning expectation
+`E[genes] = Σ_g [1 − (1−p)^{c_g}]` — exact in expectation, deterministic, no seed.
+Counted over single-gene protein-coding entries only.
+
+```{bash}
+#| label: gene-detection
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+FS_SCRATCH=/nemo/lab/turnerj/scratch/zhangg/vasaseq/flashseq_vasa
+"$RES/mk_gene_detection.py" \
+    "$OUT/${SAMPLE}_uniaggGenes_total.ReadCounts.tsv" \
+    "$FS_SCRATCH" "$FS/sample_metadata.tsv" "$RES" | sed -n '/NATIVE depth/,$p'
+```
+
+**VASA detects more genes at matched depth, at every depth tested:**
+
+| matched depth | VASA | FLASH-seq native | FLASH-seq trimmed | FLASH-seq 30 pg (trimmed) |
+|---|---|---|---|---|
+| 100 k | 10,812 | 9,916 | 10,016 | 8,034 |
+| 500 k | 13,803 | 12,673 | 12,830 | 9,740 |
+| 1 M | **14,850** | 13,612 | 13,822 | 10,595 |
+| 2 M | 15,783 | 14,440 | 14,720 | 11,623 |
+| 5 M | 16,962 | 15,321 | 15,737 | 13,252 |
+
+The lead, computed across the five depths above rather than estimated:
+
+| VASA minus… | range over 100 k – 5 M |
+|---|---|
+| FLASH-seq VASA-trimmed (7 libs) | **796 – 1,226 genes** |
+| FLASH-seq native (7 libs) | **895 – 1,642 genes** |
+| FLASH-seq 30 pg, trimmed (n=2) | **2,778 – 4,255 genes** |
+
+(I first wrote "~1,000–1,600" and "~3,600–4,300" here. Both were wrong — the first
+mixed the native arm's range into a sentence about the trimmed one, and the second
+took only the top of the 30 pg range. The table above is computed from
+`gene_detection_saturation.tsv`, not transcribed.)
+
+**An asymmetry to state, because it cuts against the claim.** The common depth is set
+by the shallowest unit, which is a VASA cell (826,443 reads). So VASA is thinned by at
+most 6.4× while FLASH-seq is thinned ~22×, and thinning is an extrapolation. The
+saturation table above is the answer to that: the ordering holds at **every** depth
+from 100 k to 5 M, including depths where both sides are thinned comparably, so it is
+not an artefact of one asymmetric matching point.
+
+### Transcript-body coverage
+
+For every read, where along its transcript did it land, as a percentile of transcript
+length 5′→3′? A protocol priming from the poly-A tail should pile up at the 3′ end; a
+protocol that fragments first should be flat.
+
+Computed over the 4,000 longest transcripts of genes expressed **in both** datasets
+(≥20 reads each, transcript ≥1000 nt — shorter than that and a 151 nt read cannot show
+positional bias at all). Longest transcript per gene, so the bins mean the same thing
+everywhere.
+
+```{bash}
+#| label: gene-coverage
+set -u
+column -t -s$'\t' "$RES/gene_coverage_profile.tsv" 2>/dev/null | cut -c1-110 | head -8
+```
+
+**Two metrics, and an external check decided which one to report.** `base` counts
+every aligned base (nominally what qualimap does); `mid` gives each read one vote at
+its midpoint. nf-core ran qualimap over the same FLASH-seq BAMs, giving **3′/5′ =
+0.93**. Our midpoint gives **0.89** — agrees. Our base gives **0.46** — does not, by
+2×. **So the midpoint profile is reported and the base numbers are diagnostic only.**
+
+I do not know why `base` disagrees, and the obvious explanation is **refuted**: if
+reads overhanging the transcript end lost their trailing bases, the effect would scale
+with read length and hit 151 nt FLASH-seq ~6× harder than ~24 nt VASA. Measured, the
+base-vs-mid 3′ deficit is **7.27 pp for VASA against 6.18 pp for FLASH-seq** — the
+larger deficit on the *shorter* reads, the opposite of the prediction.
+
+| | 5′ 20% | middle 60% | 3′ 20% | 3′/5′ |
+|---|---|---|---|---|
+| VASA | 19.13% | 57.58% | 23.29% | **1.22** |
+| FLASH-seq native | 22.16% | 58.18% | 19.66% | **0.89** |
+| FLASH-seq VASA-trimmed | 24.23% | 57.78% | 17.99% | **0.74** |
+
+**This is the opposite of the naive expectation, and it is the interesting result.**
+FLASH-seq is **not** 3′-biased — it is mildly 5′-weighted (0.89), and both protocols
+are close to uniform across the middle 60% of the transcript. **VASA is the more
+3′-weighted of the two (1.22).** The VASA profile's distinguishing feature is a sharp
+rise over the last ~10% of the transcript.
+
+Read the ratio as a *relative* statement: VASA/FLASH-seq is **1.37×** by midpoint and
+**1.23×** by base, so the direction and rough size agree across both metrics even
+though their absolute values do not.
+
+**What not to conclude.** FLASH-seq's near-uniformity is expected for a
+full-length-oriented poly-A protocol, so the surprise is on the VASA side. The
+candidate explanations — that fragmentation plus poly-A tailing re-imposes a 3′
+preference, or that the sharp terminal rise reflects internal priming or an annotation
+edge effect — are **not distinguished by this measurement**. Reported as measured, and
+flagged as the thing to chase if transcript-end behaviour matters for the analysis.
+
+Uniformity as CV over the 100 bins (0 = perfectly flat), midpoint metric: VASA
+**0.182**, FLASH-seq native **0.141**, FLASH-seq trimmed **0.176**. All three are
+close; no protocol here has a badly distorted profile.
+
+
 ## The read-vs-molecule asymmetry — intrinsic, always state it
 
 VASA counts **deduplicated molecules**; FLASH-seq via `smartseq_noUMI` counts
@@ -1164,6 +1276,13 @@ VASA's molecule-based figures alongside as its own biology.
   0.0004–0.0009% in FLASH-seq — trace, not zero.
 - FLASH-seq is **+17.65 pp** protein-coding and **+3.79 pp** processed-pseudogene
   against VASA, both outside the ±3 pp read-length floor.
+- **VASA detects more genes at matched depth**, at every depth from 100 k to 5 M
+  reads: **796–1,226** more than the VASA-trimmed FLASH-seq set (895–1,642 vs native),
+  and **2,778–4,255** more than the 30 pg rung. Depth-matched by binomial thinning,
+  one counting method both sides.
+- **Transcript coverage is near-uniform in both protocols**, and VASA is the more
+  **3′-weighted** of the two (3′/5′ 1.22 vs 0.89), which is the opposite of the naive
+  expectation. Ratio VASA/FLASH-seq = 1.37× (midpoint) / 1.23× (base).
 - **Antisense rRNA is ~24%** of this library's ribosomal reads, and the real-cell /
   blank split localises the cause to a template-abundance-dependent step.
 
@@ -1180,6 +1299,14 @@ VASA's molecule-based figures alongside as its own biology.
 - That every short-biotype fold is stable across the n=4→6→10 upgrades. **Two** moved
   materially: *ribozyme* **+0.37** (7 entries) and *scaRNA* **+0.17** (18 entries).
   Treat both as order-of-magnitude. The four classes above 100 entries moved by ≤0.09.
+- Any absolute 3′/5′ figure from the **base** coverage metric. It disagrees with
+  nf-core qualimap on the same data by 2× and the cause is unknown; only the
+  midpoint metric is validated. Use base for the protocol *comparison*, not for an
+  absolute bias number.
+- That VASA's 3′ weighting is *caused* by fragmentation-plus-tailing, internal
+  priming, or an annotation edge effect. This measurement does not distinguish them.
+- Any gene-detection comparison against `res/flashseq/gene_detection.tsv`. That table
+  is from nf-core RSEM, so it would compare pipelines as well as protocols.
 - That the unspliced fraction is stable over **83×** of depth — that span's floor is
   a blank. It is 4.4× over real cells.
 - Any rRNA percentage attributed to the **VASA-seq paper**. It publishes none.

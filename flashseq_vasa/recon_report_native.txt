@@ -1,0 +1,281 @@
+
+==============================================================================
+ARM AND SHAPE
+==============================================================================
+arm            : native
+sample         : FS_native
+outdir         : /nemo/lab/turnerj/scratch/zhangg/vasaseq/flashseq_vasa/native
+_total.ReadCounts shape : (270217, 10)
+columns as written by step 6 : ['cells/ZHA8833A1', 'cells/ZHA8833A10', 'cells/ZHA8833A2', 'cells/ZHA8833A3', 'cells/ZHA8833A4', 'cells/ZHA8833A5', 'cells/ZHA8833A6', 'cells/ZHA8833A7', 'cells/ZHA8833A8', 'cells/ZHA8833A9']
+libraries                    : ['ZHA8833A1', 'ZHA8833A10', 'ZHA8833A2', 'ZHA8833A3', 'ZHA8833A4', 'ZHA8833A5', 'ZHA8833A6', 'ZHA8833A7', 'ZHA8833A8', 'ZHA8833A9']
+
+==============================================================================
+1. RECONCILIATION CHAIN, PER LIBRARY
+==============================================================================
+FASTQ -> trimmed -> STAR input -> uniquely mapped -> BED rows -> assigned
+
+library            FASTQ      trimmed      STAR in         uniq      BED rows     assigned
+ZHA8833A1       29202448     29179266     29179266     24858885      40885545     26943624
+ZHA8833A10      23143267     23127771     23127771     18492333      30680786     20605782
+ZHA8833A2       24409629     24401230     24401230     20569255      33833987     22804263
+ZHA8833A3       24711503     24685557     24685557     20524581      33457140     22851987
+ZHA8833A4       30007541     29987578     29987578     25254155      41399217     28082039
+ZHA8833A5       28707865     28687141     28687141     23616860      38665620     26453220
+ZHA8833A6       23267003     23249296     23249296     19238478      31439501     21608227
+ZHA8833A7       23633304     23617000     23617000     18787075      30967437     21066637
+ZHA8833A8       31826470     31803422     31803422     20506682      34477604     23805716
+ZHA8833A9       38710566     38682256     38682256     25546685      42060867     28438904
+
+library           kept   in==prep    uniq/in    rows/uniq    asgn/in
+ZHA8833A1      0.9992       True     0.8519       1.6447     0.9234
+ZHA8833A10     0.9993       True     0.7996       1.6591     0.8910
+ZHA8833A2      0.9997       True     0.8430       1.6449     0.9346
+ZHA8833A3      0.9990       True     0.8314       1.6301     0.9257
+ZHA8833A4      0.9993       True     0.8422       1.6393     0.9365
+ZHA8833A5      0.9993       True     0.8233       1.6372     0.9221
+ZHA8833A6      0.9992       True     0.8275       1.6342     0.9294
+ZHA8833A7      0.9993       True     0.7955       1.6483     0.8920
+ZHA8833A8      0.9993       True     0.6448       1.6813     0.7485
+ZHA8833A9      0.9993       True     0.6604       1.6464     0.7352
+
+EXPECTED inequalities, stated so they are not read as breaks:
+  BED rows > uniquely mapped reads -- one read overlapping k annotated
+    features gives k rows; step 6 groups the BED by read name and assigns
+    each read ONCE. rows/uniq is features per read, not a double count.
+  assigned < STAR input -- drops unmapped reads, multimapper-only reads
+    that lost their tie-break, and reads over no annotated feature.
+  trimmed <= delivered -- cutadapt -m 20 drops reads that fall under it.
+
+==============================================================================
+2. UFI IS A MASK, AND TranscriptCounts CARRIES NO ABUNDANCE (finding 3f)
+==============================================================================
+distinct values in _total.UFICounts : [np.int64(0), np.int64(1)]
+CONFIRMED: UFICounts holds only 0/1 -- a DETECTION MASK, not a
+molecule count. One literal UMI key "A" per gene per column.
+TranscriptCounts == UFICounts elementwise : True
+CONFIRMED: bc2trans at K = 4**len("A") = 4 maps 1 -> 1.0 exactly, so
+the TranscriptCounts tables ARE the mask. Neither carries abundance
+information. ReadCounts is the quantification; carry only that.
+sum(UFI) - count(reads>0) = 0   (0 confirms UFI is exactly the mask)
+
+NO UMI CEILING EXISTS ON THIS PATH. bc2trans clamps at x >= K; K = 4
+here, and UFI per gene per column is at most 1, so the clamp is
+unreachable. VASA dropped 8 genes at its K = 4096 ceiling; that filter
+has no analogue here and must not be carried over.
+max UFI observed: 1 (clamp would need 4)
+
+==============================================================================
+3. SPLICED + UNSPLICED vs TOTAL (finding 3h)
+==============================================================================
+The no-UMI branches test SUBSTRING containment ("exon" in k / "intron" in
+k) where the vasa branch tests exact membership, so a combination label
+"exon-intron" is counted in BOTH. Excess was 0 in the A9 dry run; that is
+not a guarantee, so it is measured here per library.
+
+library              total        spliced      unspliced      spl+unspl     excess   excess%
+ZHA8833A1         26626735       24148009        2478726       26626735          0   0.0000%
+ZHA8833A10        20383299       18815670        1567629       20383299          0   0.0000%
+ZHA8833A2         22536615       20414314        2122301       22536615          0   0.0000%
+ZHA8833A3         22582690       20627949        1954741       22582690          0   0.0000%
+ZHA8833A4         27756484       25449219        2307265       27756484          0   0.0000%
+ZHA8833A5         26150520       23973902        2176618       26150520          0   0.0000%
+ZHA8833A6         21354720       19526696        1828024       21354720          0   0.0000%
+ZHA8833A7         20820299       19095281        1725018       20820299          0   0.0000%
+ZHA8833A8         23561426       21842969        1718457       23561426          0   0.0000%
+ZHA8833A9         28102715       25874612        2228103       28102715          0   0.0000%
+
+unspliced fraction (unspliced/total, uni-genes, reads):
+  ZHA8833A1   0.0931
+  ZHA8833A10  0.0769
+  ZHA8833A2   0.0942
+  ZHA8833A3   0.0866
+  ZHA8833A4   0.0831
+  ZHA8833A5   0.0832
+  ZHA8833A6   0.0856
+  ZHA8833A7   0.0829
+  ZHA8833A8   0.0729
+  ZHA8833A9   0.0793
+  mapStats: Total reads assigned to multi-genes after aggregation that have multiple labels (exon-intron etc):	0
+  mapStats: Number of multi-gene after aggregation that have multiple labels:	0
+
+==============================================================================
+4. SHORT / NON-POLY-A BIOTYPES -- the axis the two arms exist to separate
+==============================================================================
+Rows whose components disagree on biotype are reported as MULTI:<set>,
+not assigned to one of them. Counts below are SINGLE-biotype rows only,
+so they are a lower bound on each species and are comparable between arms.
+
+biotype            rows reads (all libs)    rows detected
+tRNA                  0              0                0
+miRNA               412          50340              412
+snoRNA              286          11134              286
+snRNA               138            868              138
+MiscRna             175         558071              175
+scaRNA               17            820               17
+ribozyme              7           2059                7
+MtTrna               22           7201               22
+MtRrna                2         514500                2
+rRNA                 26        1690999               26
+
+per library, reads in each short biotype:
+library           tRNA      miRNA     snoRNA      snRNA    MiscRna     scaRNA   ribozyme     MtTrna     MtRrna       rRNA
+ZHA8833A1            0       3771       1007        130      60572         68        224        566      44299     167078
+ZHA8833A10           0       5619       1258         42      38566         12        504        658      18897     119477
+ZHA8833A2            0       3786       1101        105      49108         79        146        956      44811     125741
+ZHA8833A3            0       4246        999         79      50639         68        167        628      57783     153762
+ZHA8833A4            0       5972       1103         89      64466         64        145        674      54111     182730
+ZHA8833A5            0       5562       1144         87      51892         86        157        773      58174     178379
+ZHA8833A6            0       4251       1031        107      34271         80        106        780      54018     125748
+ZHA8833A7            0       3520        948         53      30600         84        144        781      53403     121549
+ZHA8833A8            0       5808       1255         78     102370        134        114        839      88971     247743
+ZHA8833A9            0       7805       1288         98      75587        145        352        546      40033     268792
+
+_tRNA.ReadCounts.tsv (step 7, collapsed by isotype): 37 rows
+total reads: 713
+isotype                             reads
+AlaNNN                                292
+SerNNN                                133
+GluNNN                                 40
+HisGTG                                 36
+GluCTC                                 24
+AsnGTT                                 23
+TyrGTA                                 17
+GlyNNN                                 13
+AsnNNN                                 13
+TrpCCA                                 12
+IleAAT                                 12
+GlyGCC                                 11
+LeuNNN                                 10
+GlyTCC                                  8
+LysNNN                                  8
+
+==============================================================================
+5. BIOTYPE COMPOSITION -- poly-A primed, so protein-coding should win
+==============================================================================
+
+ZHA8833A1 -- 26943624 reads, 211377 rRNA-family (0.78%), ProteinCoding 85.32% of the non-rRNA remainder
+    ProteinCoding                                    22807341   84.65%
+    lncRNA                                            1279608    4.75%
+    MULTI:ProteinCoding-lncRNA                        1118298    4.15%
+    MULTI:ProcessedPseudogene-ProteinCoding            464225    1.72%
+    ProcessedPseudogene                                238367    0.88%
+    MULTI:ProteinCoding-UnprocessedPseudogene          170325    0.63%
+    rRNA                                               167078    0.62%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       103371    0.38%
+
+ZHA8833A10 -- 20605782 reads, 138374 rRNA-family (0.67%), ProteinCoding 84.22% of the non-rRNA remainder
+    ProteinCoding                                    17238130   83.66%
+    MULTI:ProteinCoding-lncRNA                         919143    4.46%
+    lncRNA                                             824927    4.00%
+    MULTI:ProcessedPseudogene-ProteinCoding            500830    2.43%
+    ProcessedPseudogene                                227674    1.10%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       129080    0.63%
+    rRNA                                               119477    0.58%
+    MULTI:ProteinCoding-UnprocessedPseudogene          109739    0.53%
+
+ZHA8833A2 -- 22804263 reads, 170552 rRNA-family (0.75%), ProteinCoding 84.55% of the non-rRNA remainder
+    ProteinCoding                                    19136285   83.92%
+    lncRNA                                            1072278    4.70%
+    MULTI:ProteinCoding-lncRNA                         997661    4.37%
+    MULTI:ProcessedPseudogene-ProteinCoding            425362    1.87%
+    ProcessedPseudogene                                222919    0.98%
+    MULTI:ProteinCoding-UnprocessedPseudogene          180495    0.79%
+    rRNA                                               125741    0.55%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       100842    0.44%
+
+ZHA8833A3 -- 22851987 reads, 211545 rRNA-family (0.93%), ProteinCoding 84.55% of the non-rRNA remainder
+    ProteinCoding                                    19141727   83.76%
+    MULTI:ProteinCoding-lncRNA                        1015368    4.44%
+    lncRNA                                             957125    4.19%
+    MULTI:ProcessedPseudogene-ProteinCoding            458564    2.01%
+    ProcessedPseudogene                                225413    0.99%
+    MULTI:ProteinCoding-UnprocessedPseudogene          209901    0.92%
+    rRNA                                               153762    0.67%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       113455    0.50%
+
+ZHA8833A4 -- 28082039 reads, 236841 rRNA-family (0.84%), ProteinCoding 84.49% of the non-rRNA remainder
+    ProteinCoding                                    23526610   83.78%
+    MULTI:ProteinCoding-lncRNA                        1255563    4.47%
+    lncRNA                                            1161855    4.14%
+    MULTI:ProcessedPseudogene-ProteinCoding            590754    2.10%
+    ProcessedPseudogene                                280390    1.00%
+    MULTI:ProteinCoding-UnprocessedPseudogene          219953    0.78%
+    rRNA                                               182730    0.65%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       150321    0.54%
+
+ZHA8833A5 -- 26453220 reads, 236553 rRNA-family (0.89%), ProteinCoding 84.33% of the non-rRNA remainder
+    ProteinCoding                                    22107813   83.57%
+    MULTI:ProteinCoding-lncRNA                        1188672    4.49%
+    lncRNA                                            1083839    4.10%
+    MULTI:ProcessedPseudogene-ProteinCoding            567352    2.14%
+    ProcessedPseudogene                                270531    1.02%
+    MULTI:ProteinCoding-UnprocessedPseudogene          235605    0.89%
+    rRNA                                               178379    0.67%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       143504    0.54%
+
+ZHA8833A6 -- 21608227 reads, 179766 rRNA-family (0.83%), ProteinCoding 84.45% of the non-rRNA remainder
+    ProteinCoding                                    18095506   83.74%
+    MULTI:ProteinCoding-lncRNA                         965178    4.47%
+    lncRNA                                             895038    4.14%
+    MULTI:ProcessedPseudogene-ProteinCoding            441954    2.05%
+    ProcessedPseudogene                                217772    1.01%
+    MULTI:ProteinCoding-UnprocessedPseudogene          214199    0.99%
+    rRNA                                               125748    0.58%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       111177    0.51%
+
+ZHA8833A7 -- 21066637 reads, 174952 rRNA-family (0.83%), ProteinCoding 84.69% of the non-rRNA remainder
+    ProteinCoding                                    17693138   83.99%
+    MULTI:ProteinCoding-lncRNA                         913919    4.34%
+    lncRNA                                             868971    4.12%
+    MULTI:ProcessedPseudogene-ProteinCoding            416071    1.98%
+    MULTI:ProteinCoding-UnprocessedPseudogene          220123    1.04%
+    ProcessedPseudogene                                215447    1.02%
+    rRNA                                               121549    0.58%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran        97663    0.46%
+
+ZHA8833A8 -- 23805716 reads, 336714 rRNA-family (1.41%), ProteinCoding 81.26% of the non-rRNA remainder
+    ProteinCoding                                    19071645   80.11%
+    MULTI:ProteinCoding-lncRNA                        1174419    4.93%
+    lncRNA                                            1035115    4.35%
+    MULTI:ProcessedPseudogene-ProteinCoding            571796    2.40%
+    MULTI:ProteinCoding-UnprocessedPseudogene          349647    1.47%
+    ProcessedPseudogene                                324192    1.36%
+    rRNA                                               247743    1.04%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       174219    0.73%
+
+ZHA8833A9 -- 28438904 reads, 308825 rRNA-family (1.09%), ProteinCoding 83.70% of the non-rRNA remainder
+    ProteinCoding                                    23546085   82.80%
+    MULTI:ProteinCoding-lncRNA                        1273119    4.48%
+    lncRNA                                            1197293    4.21%
+    MULTI:ProcessedPseudogene-ProteinCoding            675587    2.38%
+    ProcessedPseudogene                                314218    1.10%
+    rRNA                                               268792    0.95%
+    MULTI:ProcessedPseudogene-ProteinCoding-Tran       190489    0.67%
+    MULTI:ProteinCoding-UnprocessedPseudogene          161692    0.57%
+
+NOTE: rRNA here is the ANNOTATION route and is NOT the rRNA figure for
+this comparison. Use res/flashseq/rrna_bwa.tsv -- the annotation route
+reads low (0.80%% in the dry run vs 3.50-6.44% by bwa) because 99.7% of
+rRNA features are under 151 nt and Ensembl lacks the 47S unit.
+
+ASYMMETRY WORTH STATING when these rows are compared with the VASA side:
+the FLASH-seq rows above are clean of one specific artefact that the VASA
+rows are not. FLASH-seq runs stranded=n, so an antisense ribosomal read is
+caught by step 3 on its own side. VASA runs stranded=y (correctly, for a
+stranded protocol), and this library is measurably less strand-specific
+than the published one -- 57.7-83.8% of its ribosomal reads are forward,
+median 74.8%, against 92.7-97.4% published (measured on both plates with
+riboread-selection.py's own two predicates). So ~24% of VASA ribosomal
+reads are sent to the non-ribosomal arm and go on to be gene-assigned;
+vasaplate_check/README.md documents that failure mode inflating one
+antisense rRNA locus ~600x. Treat any rRNA / MiscRna / MtRrna row on the
+VASA side as possibly carrying antisense rRNA leakage rather than as a
+clean measurement. It does not affect the FLASH-seq rows above.
+
+written: /nemo/lab/turnerj/working/guangxin/vasaseq/res/flashseq_vasa/reconciliation_native.tsv
+
+==============================================================================
+VERDICT
+==============================================================================
+Reconciliation holds for all 10 libraries and the no-UMI semantics are
+as predicted. ReadCounts is the quantification.

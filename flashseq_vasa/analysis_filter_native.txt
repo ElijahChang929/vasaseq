@@ -1,0 +1,129 @@
+
+==============================================================================
+PROVENANCE
+==============================================================================
+generated   : 2026-07-29T13:53:39
+script      : /nemo/lab/turnerj/working/guangxin/vasaseq/code/flashseq_vasa/build_analysis_tables.py
+arm         : native
+sample      : FS_native
+source      : /nemo/lab/turnerj/scratch/zhangg/vasaseq/flashseq_vasa/native
+output      : /nemo/lab/turnerj/working/guangxin/vasaseq/data/flashseq_vasa
+pandas 2.3.3 / numpy 2.2.6 / python 3.10.20
+
+==============================================================================
+LOAD
+==============================================================================
+  total.ReadCounts               ((270217, 10),)
+  total.UFICounts                ((270217, 10),)
+  total.TranscriptCounts         ((270217, 10),)
+  uniagg_total.ReadCounts        ((212408, 10),)
+  uniagg_spliced.ReadCounts      ((212408, 10),)
+  uniagg_unspliced.ReadCounts    ((212408, 10),)
+  tRNA.ReadCounts                ((37, 10),)
+
+==============================================================================
+COLUMNS -- strip step 6's 'cells/' prefix and order by input amount
+==============================================================================
+as written by step 6 : ['cells/ZHA8833A1', 'cells/ZHA8833A10', 'cells/ZHA8833A2', 'cells/ZHA8833A3', 'cells/ZHA8833A4', 'cells/ZHA8833A5', 'cells/ZHA8833A6', 'cells/ZHA8833A7', 'cells/ZHA8833A8', 'cells/ZHA8833A9']
+bare library ids     : ['ZHA8833A1', 'ZHA8833A10', 'ZHA8833A2', 'ZHA8833A3', 'ZHA8833A4', 'ZHA8833A5', 'ZHA8833A6', 'ZHA8833A7', 'ZHA8833A8', 'ZHA8833A9']
+written in order     : ['ZHA8833A1', 'ZHA8833A2', 'ZHA8833A3', 'ZHA8833A4', 'ZHA8833A5', 'ZHA8833A6', 'ZHA8833A7', 'ZHA8833A8', 'ZHA8833A9', 'ZHA8833A10']
+(titration order, not lexical -- A10 sorts between A1 and A2)
+
+==============================================================================
+FILTER 1 -- the unnamed row (VASA filter 1: APPLIES)
+==============================================================================
+reduceGeneName can produce an empty label, which pandas writes as an
+unnamed index entry. VASA had exactly 1, carrying 42 UFIs.
+unnamed rows found: 0
+
+==============================================================================
+FILTER 2 -- the UMI ceiling (VASA filter 2: DOES NOT APPLY)
+==============================================================================
+bc2trans clamps at x >= K, K = 4**len(umi). The only UMI on this path is
+the literal 'A', so K = 4, while UFI per gene per column is at most 1.
+The clamp is unreachable. Precondition checked below rather than assumed.
+max UFI observed anywhere : 1   (K = 4; clamp needs >= 4)
+distinct UFI values       : [np.int64(0), np.int64(1)]
+CONFIRMED: no gene can reach the ceiling -> filter has no analogue here
+TranscriptCounts == UFICounts elementwise : True
+-> neither carries abundance information; ReadCounts only.
+
+==============================================================================
+FILTER 3 -- blank barcodes (VASA filter 3: DOES NOT APPLY)
+==============================================================================
+There are no barcodes and no blanks: each column is a whole library.
+qc_verdict plays a different role and is carried as metadata, NOT applied:
+  ZHA8833A1   30 ng   ok       well A:1  
+  ZHA8833A2   30 ng   ok       well B:1  
+  ZHA8833A3   3 ng    ok       well C:1  
+  ZHA8833A4   3 ng    ok       well D:1  
+  ZHA8833A5   1.5 ng  ok       well E:1  
+  ZHA8833A6   1.5 ng  ok       well F:1  
+  ZHA8833A7   60 pg   caveat   well G:1  3.6% human CALB1 (well G:1); reads are identifiable 
+  ZHA8833A8   60 pg   exclude  well H:1  18.3% human CALB1 (well H:1); not a usable 60 pg dat
+  ZHA8833A9   30 pg   ok       well A:2  
+  ZHA8833A10  30 pg   ok       well B:2  
+A8 (exclude) and A7 (caveat) are KEPT in the tables. The verdict filters
+interpretation, not QC -- dropping A8 would lose the well effect that
+identified its contamination.
+
+==============================================================================
+FILTER 4 -- all-zero rows (NEW here, not a VASA filter)
+==============================================================================
+Step 6 builds the row index from the union over libraries, so a gene
+detected in no library can exist in the frame.
+all-zero rows found: 0 of 270217
+
+==============================================================================
+APPLY
+==============================================================================
+rows: 270217 -> 270217  (dropped 0: 0 unnamed, 0 all-zero)
+cols: 10 -> 10  (no library dropped, by design)
+dropped rows carry 0 reads of 242660399 (0.000000%)
+  wrote FS_native_analysis_total.ReadCounts.tsv              ((270217, 10),)
+  wrote FS_native_analysis_uniagg_total.ReadCounts.tsv       ((212408, 10),)
+  wrote FS_native_analysis_uniagg_spliced.ReadCounts.tsv     ((212408, 10),)
+  wrote FS_native_analysis_uniagg_unspliced.ReadCounts.tsv   ((212408, 10),)
+  wrote FS_native_analysis_tRNA.ReadCounts.tsv               ((37, 10),)
+  wrote FS_native_analysis_detected.mask.tsv                 ((270217, 10),)
+
+==============================================================================
+GENE METADATA -- for the filtering this script does NOT do
+==============================================================================
+  wrote FS_native_gene_metadata.tsv ((270217, 9),)
+
+entries: 270217   single-gene: 44119   combination: 226098
+
+single-gene entries by biotype (top 12):
+  lncRNA                                19207 entries        9473382 reads
+  ProteinCoding                         18439 entries      189574893 reads
+  ProcessedPseudogene                    4672 entries        2020472 reads
+  UnprocessedPseudogene                   396 entries          15248 reads
+  TranscribedProcessedPseudogene          313 entries         403288 reads
+  miRNA                                   257 entries          34557 reads
+  snoRNA                                  220 entries           9810 reads
+  TranscribedUnprocessedPseudogene        160 entries          15783 reads
+  MiscRna                                 115 entries           2931 reads
+  snRNA                                    79 entries            438 reads
+  UnitaryPseudogene                        51 entries           7238 reads
+  TranscribedUnitaryPseudogene             43 entries          10304 reads
+
+what the OPTIONAL downstream filters would leave (NONE applied here):
+  as written (unnamed + all-zero only)                   270217 entries  100.0% of reads
+  + single-gene entries only                              44119 entries   84.0% of reads
+  + single-gene AND protein-coding                        18439 entries   78.1% of reads
+  + ... AND detected in >=3 libraries                     16854 entries   78.1% of reads
+
+library     input    verdict           reads      genes
+ZHA8833A1   30 ng    ok             26943624      93349
+ZHA8833A2   30 ng    ok             22804263      97016
+ZHA8833A3   3 ng     ok             22851987      93390
+ZHA8833A4   3 ng     ok             28082039      93460
+ZHA8833A5   1.5 ng   ok             26453220      95060
+ZHA8833A6   1.5 ng   ok             21608227      90120
+ZHA8833A7   60 pg    caveat         21066637      73677
+ZHA8833A8   60 pg    exclude        23805716      78298
+ZHA8833A9   30 pg    ok             28438904      73563
+ZHA8833A10  30 pg    ok             20605782      66229
+
+manifest updated: /nemo/lab/turnerj/working/guangxin/vasaseq/data/flashseq_vasa/manifest.json (arms recorded: ['native', 'vasalen'])

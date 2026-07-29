@@ -135,11 +135,27 @@ So both arms were quantified — identical in every setting **except read length
 | snoRNA | — | — | 1.69× | 1.70× | 1.64× |
 | scaRNA | — | — | 1.67× | 1.50× | 1.38× |
 
-**Correction to a stability claim.** At n=6 I wrote "every fold moved by ≤0.30". At
-n=10 that is false: *ribozyme* moved **+0.37**. It is the noisiest of the six because
-it rests on single-digit entry counts (7 → 18 detected); the five classes with
-double- or triple-digit counts all moved by ≤0.09. Quote **1.7–2.6×**, treat
-*ribozyme* as order-of-magnitude only.
+**Correction to a stability claim — twice over.** At n=6 I wrote "every fold moved by
+≤0.30"; at n=10 that is false, *ribozyme* moved **+0.37**. I then wrote that "the five
+classes with double- or triple-digit counts all moved by ≤0.09" — **also false**:
+*scaRNA* moved **+0.17** on 18→30 entries.
+
+Recomputed from the two tables, the pattern is cleaner than either framing and tracks
+**entry count**, not digit count:
+
+| biotype | fold n=6 → n=10 | Δ | entries detected (native, n=10) |
+|---|---|---|---|
+| ribozyme | 2.20 → 2.57 | **+0.37** | 7 |
+| scaRNA | 1.50 → 1.67 | **+0.17** | 18 |
+| miRNA | 1.86 → 1.77 | −0.09 | 443 |
+| MiscRna | 1.64 → 1.71 | +0.07 | 175 |
+| snRNA | 1.87 → 1.90 | +0.03 | 138 |
+| snoRNA | 1.70 → 1.69 | −0.01 | 287 |
+
+**The two classes with fewer than ~20 detected entries moved; the four with more than
+100 moved by ≤0.09.** So: quote the range as **1.7–2.6×**, rest the claim on *miRNA*,
+*snoRNA*, *snRNA* and *MiscRna*, and treat **both** *ribozyme* and *scaRNA* as
+order-of-magnitude only.
 
 **The conclusion is stable under the n=4 → n=6 upgrade**: every fold moved by
 ≤0.30 and the ordering is essentially unchanged, which is the check that matters

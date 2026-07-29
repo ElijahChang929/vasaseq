@@ -994,10 +994,24 @@ The direction of the conclusion is unaffected, and the reason is worth stating r
 than smoothing over: **ribozyme is the noisiest of the six because it rests on
 single-digit entry counts** — 5 → 11 detected at n=6, 7 → 18 at n=10. A fold built on
 seven entries is not a stable estimate, and adding four libraries moved it as you
-would expect. The five classes with double- or triple-digit counts all moved by
-**≤0.09**. So: quote the fold range as **1.7–2.6×**, treat *ribozyme* as
-order-of-magnitude only, and rest the claim on *miRNA*, *snoRNA*, *snRNA* and
-*MiscRna*.
+would expect. And a second correction I owe: I then wrote that "the five classes with double- or
+triple-digit counts all moved by ≤0.09". **That is also false** — *scaRNA* moved
+**+0.17** on 18→30 entries.
+
+Recomputed from both tables, the pattern tracks **entry count**, not digit count:
+
+| biotype | fold n=6 → n=10 | Δ | entries detected (native, n=10) |
+|---|---|---|---|
+| ribozyme | 2.20 → 2.57 | **+0.37** | 7 |
+| scaRNA | 1.50 → 1.67 | **+0.17** | 18 |
+| miRNA | 1.86 → 1.77 | −0.09 | 443 |
+| MiscRna | 1.64 → 1.71 | +0.07 | 175 |
+| snRNA | 1.87 → 1.90 | +0.03 | 138 |
+| snoRNA | 1.70 → 1.69 | −0.01 | 287 |
+
+**The two classes below ~20 detected entries moved; the four above 100 moved by
+≤0.09.** So: quote **1.7–2.6×**, rest the claim on *miRNA*, *snoRNA*, *snRNA* and
+*MiscRna*, and treat **both** *ribozyme* and *scaRNA* as order-of-magnitude only.
 
 Nuance: *MiscRna* recovers **entries** (1.64×) but not **reads** (0.96×). Trimming
 finds more distinct loci while splitting the same read mass across them — for
@@ -1163,9 +1177,9 @@ VASA's molecule-based figures alongside as its own biology.
 - Any rRNA figure from the Ensembl `rRNA` biotype.
 - That the **8 UMI-ceiling genes** or the top of the raw ranking measure expression.
 - That **intron-only entries** (*Gphn*, *Cmss1*) are expressed protein.
-- That every short-biotype fold is stable across the n=4→6→10 upgrades. *Ribozyme*
-  moved **+0.37** (2.20 → 2.57) and rests on 7 detected entries; treat it as
-  order-of-magnitude. The other five moved by ≤0.09.
+- That every short-biotype fold is stable across the n=4→6→10 upgrades. **Two** moved
+  materially: *ribozyme* **+0.37** (7 entries) and *scaRNA* **+0.17** (18 entries).
+  Treat both as order-of-magnitude. The four classes above 100 entries moved by ≤0.09.
 - That the unspliced fraction is stable over **83×** of depth — that span's floor is
   a blank. It is 4.4× over real cells.
 - Any rRNA percentage attributed to the **VASA-seq paper**. It publishes none.

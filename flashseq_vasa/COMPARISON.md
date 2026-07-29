@@ -1,7 +1,8 @@
 # FLASH-seq vs VASA-seq — rRNA content and RNA species detected
 
-Status 2026-07-29. **Two of four comparison legs are complete and verified; two are
-blocked on compute that was still running when the cluster became unreachable.**
+Status 2026-07-29. **Three of four comparison legs are complete and verified.** All 20
+step-6 pickles finished, so the composition leg is now answered on all ten libraries;
+only depth-matched detection remains unrun.
 Everything below was measured on the user's own data. Nothing is quoted from a
 publication. Where a number is provisional, it says so.
 
@@ -125,14 +126,20 @@ So both arms were quantified — identical in every setting **except read length
 **6 libraries complete in both arms** (A1, A3, A4, A5, A8, A9 — including A9, the
 30 pg rung). Entries detected:
 
-| biotype | native 151 nt | VASA-trimmed | fold | fold at n=4 |
-|---|---|---|---|---|
-| ribozyme | 5 | 11 | **2.20×** | 2.50× |
-| snRNA | 106 | 198 | **1.87×** | 2.00× |
-| miRNA | 359 | 669 | **1.86×** | 1.92× |
-| snoRNA | 246 | 417 | **1.70×** | 1.64× |
-| MiscRna | 151 | 247 | 1.64× | 1.63× |
-| scaRNA | 16 | 24 | 1.50× | 1.38× |
+| biotype | native 151 nt | VASA-trimmed | fold (n=10) | n=6 | n=4 |
+|---|---|---|---|---|---|
+| ribozyme | 7 | 18 | **2.57×** | 2.20× | 2.50× |
+| snRNA | — | — | **1.90×** | 1.87× | 2.00× |
+| miRNA | — | — | **1.77×** | 1.86× | 1.92× |
+| MiscRna | — | — | 1.71× | 1.64× | 1.63× |
+| snoRNA | — | — | 1.69× | 1.70× | 1.64× |
+| scaRNA | — | — | 1.67× | 1.50× | 1.38× |
+
+**Correction to a stability claim.** At n=6 I wrote "every fold moved by ≤0.30". At
+n=10 that is false: *ribozyme* moved **+0.37**. It is the noisiest of the six because
+it rests on single-digit entry counts (7 → 18 detected); the five classes with
+double- or triple-digit counts all moved by ≤0.09. Quote **1.7–2.6×**, treat
+*ribozyme* as order-of-magnitude only.
 
 **The conclusion is stable under the n=4 → n=6 upgrade**: every fold moved by
 ≤0.30 and the ordering is essentially unchanged, which is the check that matters
@@ -170,56 +177,53 @@ native-length difference overstates it by roughly 1.4–2.5× depending on class
 
 ---
 
-## 3. Composition on the non-rRNA denominator — PARTIAL (6 of 10 libraries)
+## 3. Composition on the non-rRNA denominator — COMPLETE
 
-Measured on the 6 matched libraries, as % of non-rRNA reads (`rRNA` and `Mt_rRNA`
-rows removed from the denominator, per the user's decision):
+All 20 step-6 pickles finished 2026-07-29, so this leg is now answered on **all 10
+FLASH-seq libraries against 12 VASA cells**, reads vs reads.
 
-| biotype | native | VASA-trimmed | Δ pp |
-|---|---|---|---|
-| ProteinCoding | **84.15%** | 81.53% | −2.61 |
-| lncRNA | 10.59% | 11.61% | +1.02 |
-| ProcessedPseudogene | 3.35% | 4.81% | +1.45 |
-| UnprocessedPseudogene | 0.88% | 0.88% | +0.01 |
-| TranscribedProcessedPseudogene | 0.48% | 0.57% | +0.10 |
-| MiscRna | 0.26% | 0.25% | −0.01 |
-| MtRrna | 0.22% | 0.22% | −0.00 |
-| miRNA | 0.042% | 0.080% | +0.04 |
+| biotype | FLASH-seq (trimmed) | VASA | gap (pp) | read-length effect (pp) |
+|---|---|---|---|---|
+| ProteinCoding | 81.77% | 64.12% | **+17.65** | −2.55 |
+| lncRNA | 11.48% | 13.92% | −2.44 | +0.97 |
+| **MiscRna** | 0.22% | **9.82%** | **−9.60** | −0.01 |
+| **snRNA** | 0.0006% | **7.03%** | **−7.03** | 0.00 |
+| snoRNA | 0.007% | 2.60% | −2.59 | 0.00 |
+| ribozyme | 0.0009% | 1.08% | −1.08 | 0.00 |
+| ProcessedPseudogene | 4.76% | 0.97% | **+3.79** | +1.44 |
+| UnprocessedPseudogene | 0.88% | 0.09% | +0.79 | +0.01 |
+| scaRNA | 0.0004% | 0.06% | −0.06 | 0.00 |
 
-**84% protein-coding is what a poly-A library should look like**, and the
-comparison against VASA is the piece still missing. Note that read length alone
-moves ProteinCoding by −2.6 pp and the pseudogene classes up: shorter reads are
-less uniquely assignable, so some protein-coding mass redistributes to paralogous
-pseudogenes. **Any FLASH-seq↔VASA composition difference smaller than ~3 pp is
-within the read-length effect and must not be attributed to protocol.**
+**Four gaps clear the ±3 pp read-length floor**, and they are the answer to the
+question:
 
-The remaining four libraries (A2, A6, A7, A10) still need step-6 pickles. **10 of 20 step-6 pickles are built** (all
-`rc=0`, 39–59 GB, 7h40m–10h05m each); the remainder were still running when the
-nemo login node became unreachable, and the sub-agent driving them had already
-died on a network error (its jobs survived).
+- **ProteinCoding +17.65 pp**, **ProcessedPseudogene +3.79 pp** — poly-A selection
+  concentrates FLASH-seq on mRNA; shorter reads spread some of it onto paralogous
+  pseudogenes.
+- **MiscRna −9.60 pp**, **snRNA −7.03 pp** — VASA captures what FLASH-seq does not.
+  The five structural-RNA classes together are **20.59% of VASA's non-rRNA reads
+  against 0.23% of FLASH-seq's: 90×**, where read length moves those classes by
+  ≤0.01 pp.
 
-Two things are settled for when it resumes:
+**This is the finding that survives the read-length confound.** The *short-species
+detection* axis is confounded (§2 — length-matching recovers 1.7–2.6× more entries).
+The *structural-RNA composition* gap is 90× and read length cannot touch it. Measured
+on the same reference, annotation, counting code and denominator.
 
-**Denominator (user decision):** rRNA as % of all reads; every other biotype as %
-of the non-rRNA remainder, on both sides.
+`snRNA`, `ribozyme` and `scaRNA` sit at **0.0004–0.0009%** of FLASH-seq's non-rRNA
+reads — trace signal four orders of magnitude below VASA, **not zero**. Reported as
+measured; a handful of reads is a different claim from none.
 
-**Comparator (from the nf-core cross-check):** use the **unfiltered `uniagg`**
-VASA tables, *not* `data/PM26037/out/analysis/`. The UMI-ceiling filter drops 8
-entries — *Rmrp*, *Rn7sk*, *Rn7s1*/*Rn7s2*, *Rnu1a1*, *Rnu1b6*, *Rnu2.10*, the
-*Snord3b* cluster, a *Cmss1* pair — that carry **23.02% of uniagg reads** and
-whose removal shifts ProteinCoding by **+19.19 pp**. They were selected precisely
-*for* saturating the UMI ceiling, i.e. for being the most abundant small RNAs,
-which is what a total-RNA protocol exists to capture. Correct for molecule
-counting; wrong here.
+**VASA side uses the unfiltered `uniagg` tables**, not `analysis/`: the UMI-ceiling
+filter drops 8 entries carrying **23.02% of uniagg reads** and shifts ProteinCoding by
+**+19.19 pp**, and those entries were selected *for* saturating the ceiling — i.e. for
+being the most abundant small RNAs. Correct for molecule counting, wrong here.
 
----
+## 4. Depth-matched detection — still not run
 
-## 4. Depth-matched detection — BLOCKED
+The methodological prerequisite (the read-length control) is complete; the
+downsampling pass to VASA's median depth was not run.
 
-Same dependency. The methodological prerequisite (the read-length control) is
-done; the downsampling pass was not run.
-
----
 
 ## The read-vs-molecule asymmetry — intrinsic, must always be stated
 

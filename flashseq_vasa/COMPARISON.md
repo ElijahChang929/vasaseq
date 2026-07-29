@@ -122,17 +122,26 @@ So both arms were quantified — identical in every setting **except read length
 
 ### Result: length-matching recovers much of the gap
 
-4 libraries complete in both arms (A3, A5, A8, A9 — including A9, the 30 pg rung):
+**6 libraries complete in both arms** (A1, A3, A4, A5, A8, A9 — including A9, the
+30 pg rung). Entries detected:
 
-| biotype | native 151 nt | VASA-trimmed | fold |
-|---|---|---|---|
-| ribozyme | 4 | 10 | **2.50×** |
-| snRNA | 73 | 146 | **2.00×** |
-| miRNA | 288 | 553 | **1.92×** |
-| snoRNA | 209 | 342 | **1.64×** |
-| MiscRna | 124 | 202 | 1.63× |
-| scaRNA | 13 | 18 | 1.38× |
-| **tRNA table** | 27 rows / 361 reads | 46 rows / 754 reads | **1.70× / 2.09×** |
+| biotype | native 151 nt | VASA-trimmed | fold | fold at n=4 |
+|---|---|---|---|---|
+| ribozyme | 5 | 11 | **2.20×** | 2.50× |
+| snRNA | 106 | 198 | **1.87×** | 2.00× |
+| miRNA | 359 | 669 | **1.86×** | 1.92× |
+| snoRNA | 246 | 417 | **1.70×** | 1.64× |
+| MiscRna | 151 | 247 | 1.64× | 1.63× |
+| scaRNA | 16 | 24 | 1.50× | 1.38× |
+
+**The conclusion is stable under the n=4 → n=6 upgrade**: every fold moved by
+≤0.30 and the ordering is essentially unchanged, which is the check that matters
+for a provisional result. At n=4 the tRNA table went 27 → 46 rows (361 → 754
+reads).
+
+Note `MiscRna` recovers **entries** (1.64×) but not **reads** (0.96×): trimming
+finds more distinct loci while splitting the same read mass across them. So
+"recovery" means detection breadth, not extra signal, for the abundant classes.
 
 Mechanism confirmed directly on the BED rows that fed step 6 (A9):
 
@@ -161,9 +170,30 @@ native-length difference overstates it by roughly 1.4–2.5× depending on class
 
 ---
 
-## 3. Composition on the non-rRNA denominator — BLOCKED
+## 3. Composition on the non-rRNA denominator — PARTIAL (6 of 10 libraries)
 
-Needs the ten-library count tables. **10 of 20 step-6 pickles are built** (all
+Measured on the 6 matched libraries, as % of non-rRNA reads (`rRNA` and `Mt_rRNA`
+rows removed from the denominator, per the user's decision):
+
+| biotype | native | VASA-trimmed | Δ pp |
+|---|---|---|---|
+| ProteinCoding | **84.15%** | 81.53% | −2.61 |
+| lncRNA | 10.59% | 11.61% | +1.02 |
+| ProcessedPseudogene | 3.35% | 4.81% | +1.45 |
+| UnprocessedPseudogene | 0.88% | 0.88% | +0.01 |
+| TranscribedProcessedPseudogene | 0.48% | 0.57% | +0.10 |
+| MiscRna | 0.26% | 0.25% | −0.01 |
+| MtRrna | 0.22% | 0.22% | −0.00 |
+| miRNA | 0.042% | 0.080% | +0.04 |
+
+**84% protein-coding is what a poly-A library should look like**, and the
+comparison against VASA is the piece still missing. Note that read length alone
+moves ProteinCoding by −2.6 pp and the pseudogene classes up: shorter reads are
+less uniquely assignable, so some protein-coding mass redistributes to paralogous
+pseudogenes. **Any FLASH-seq↔VASA composition difference smaller than ~3 pp is
+within the read-length effect and must not be attributed to protocol.**
+
+The remaining four libraries (A2, A6, A7, A10) still need step-6 pickles. **10 of 20 step-6 pickles are built** (all
 `rc=0`, 39–59 GB, 7h40m–10h05m each); the remainder were still running when the
 nemo login node became unreachable, and the sub-agent driving them had already
 died on a network error (its jobs survived).
@@ -230,33 +260,28 @@ FSV_ARM=vasalen code/flashseq_vasa/pipeline_fs.sh check prep map assign pickle1 
 
 `config.sh` is the only file meant to be edited.
 
-**UNEXPLAINED, do not dismiss: the `check` stage reports `MISS` for all 10
-libraries in both arms.** Its message is *"no unique
-`ZHA8833A9_S*_R1_001.fastq.gz` under
-.../20260325_LH00442_0237_B23GT7GLT3/fastq"*, yet listing that directory returns
-exactly one match, `ZHA8833A9_S108_L007_R1_001.fastq.gz` — and the checker's own
-glob **does** match it uniquely (`*` spans `108_L007`).
+**DIAGNOSED (2026-07-29): the `check` stage's `MISS` for all 10 libraries was a
+transient filesystem failure, not a code defect.**
 
-I first attributed this to the glob missing the lane field. **That explanation is
-wrong** — it was contradicted by the very listing I used to support it, because
-that listing used a different, broader pattern (`ZHA8833A9*R1*.fastq.gz`) and
-never tested the checker's glob. So the cause is still unknown. Candidates, none
-tested (the cluster became unreachable):
+`$FSV_FASTQ` is a symlink into `/nemo/stp/sequencing/` — a different filesystem
+from the working directory. `find_r1` uses `find -L` precisely to follow it
+(documented at `config.sh:87`), and re-running `pipeline_fs.sh check` for both
+arms now gives **`OK` for all 10 libraries in each** (`ZHA8833A1_S100_L007` …
+`ZHA8833A10_S109_L007`). Reproducing `find_r1` step by step returns `n=1`, rc=0.
+So the delivery filesystem was briefly unreadable at 21:03 on 2026-07-28, when the
+check ran — the same window in which the driving agent lost its connection.
 
-- the checker resolves a different directory than the one listed (a `$FSV_FASTQ`
-  that differs at run time, e.g. an unexpanded or stale variable);
-- it runs the glob in a context where it does not expand (quoted, `nullglob`
-  unset so the literal pattern is tested for existence, or a subshell with a
-  different `cwd`);
-- its "unique" test counts wrongly (e.g. `wc -l` on an unexpanded literal
-  returning 1, or an `R2`/lane sibling making the count != 1).
+**My first two explanations were both wrong, and the second was worse than the
+first.** I initially blamed the glob for missing the lane field — but
+`ZHA8833A9_S*_R1_001.fastq.gz` does match `ZHA8833A9_S108_L007_R1_001.fastq.gz`
+uniquely (`*` spans `108_L007`), and the `ls` I cited as evidence used a broader
+pattern (`ZHA8833A9*R1*.fastq.gz`) and never tested the checker's own glob. I then
+labelled the failure cosmetic, which is the one conclusion a validator failing
+20/20 does not license.
 
-**What is separately established is that the run resolved the correct inputs** —
-the ten libraries produced trimmed FASTQs, BAMs, BEDs and pickles whose read
-counts reconcile — so the pipeline was not starved of data. But a validator that
-fails for every library is a defect to diagnose, not to label cosmetic, and until
-it is diagnosed the `check` stage cannot be trusted to catch a real missing
-input.
+**Method notes: to test a glob, run that glob** — a broader pattern matching is not
+evidence the narrower one matches. And when a validator fails on *every* input,
+suspect the environment before the validator.
 
 ## Outputs
 

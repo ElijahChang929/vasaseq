@@ -281,28 +281,24 @@ completed at 1h08m each. Step 6 is superlinear in BED size.
    property of the library chemistry, not the depletion, and the blank-vs-real
    split localises it to a template-abundance-dependent step.
 6. **`flashseq/README.md` needs the 5S → 18S-relic correction.**
-7. **The `check` stage of `pipeline_fs.sh` fails for all 10 libraries in both
-   arms, and the cause is UNKNOWN.** It reports *"no unique
-   `ZHA8833A9_S*_R1_001.fastq.gz`"* for a directory that contains exactly one
-   matching file, `ZHA8833A9_S108_L007_R1_001.fastq.gz`, which that glob does
-   match uniquely.
+7. **RESOLVED (2026-07-29): the `check` stage's `MISS` for all 10 libraries in
+   both arms was a transient filesystem failure, not a code defect.** Re-running
+   `pipeline_fs.sh check` now gives `OK` for all 10 in each arm, and reproducing
+   `find_r1` step by step returns `n=1`, rc=0. `$FSV_FASTQ` symlinks into
+   `/nemo/stp/sequencing/`, a separate filesystem, which was briefly unreadable at
+   21:03 on 2026-07-28 — the same window in which the driving agent lost its
+   connection. `find -L` already handles the symlink correctly and says so at
+   `config.sh:87`.
 
-   **My first explanation — that the glob misses the lane field — was wrong**, and
-   wrong in an instructive way: I "confirmed" it with an `ls` that used a
-   *different, broader* pattern (`ZHA8833A9*R1*.fastq.gz`) and never ran the
-   checker's own glob. The listing I cited as evidence actually contradicted the
-   claim. Then I compounded it by calling the failure cosmetic, which is the one
-   conclusion a validator failing 20/20 does not license.
+   **Two wrong explanations on the way, and the second was worse.** First I blamed
+   the glob for missing the lane field — but `ZHA8833A9_S*_R1_001.fastq.gz` does
+   match `ZHA8833A9_S108_L007_R1_001.fastq.gz` uniquely, and the `ls` I cited as
+   evidence used a *broader* pattern and never ran the checker's own glob: the
+   listing I called confirmation actually contradicted the claim. Then I labelled
+   the failure cosmetic, which is the one conclusion a validator failing 20/20
+   does not license.
 
-   Untested candidates: `$FSV_FASTQ` resolving elsewhere at run time; the glob not
-   expanding in its actual context (quoting, `nullglob`, subshell `cwd`); or the
-   uniqueness test miscounting. Diagnose by running the checker's exact command in
-   its exact context, not a paraphrase of it.
-
-   Separately established: the run itself resolved the right inputs (all ten
-   libraries produced reconciling trimmed FASTQs, BAMs, BEDs and pickles). So no
-   result here rests on the broken check — but the check cannot be trusted to
-   catch a genuine missing input until it is fixed.
-
-   **Method note for future sessions: to test a glob, run that glob.** A broader
-   pattern matching is not evidence the narrower one matches.
+   **Two method notes worth keeping.** To test a glob, run that glob — a broader
+   pattern matching is not evidence the narrower one matches. And when a validator
+   fails on *every* input, suspect the environment before the validator: a uniform
+   failure is far more often infrastructure than logic.

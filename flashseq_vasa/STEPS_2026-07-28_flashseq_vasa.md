@@ -281,24 +281,36 @@ completed at 1h08m each. Step 6 is superlinear in BED size.
    property of the library chemistry, not the depletion, and the blank-vs-real
    split localises it to a template-abundance-dependent step.
 6. **`flashseq/README.md` needs the 5S → 18S-relic correction.**
-7. **RESOLVED (2026-07-29): the `check` stage's `MISS` for all 10 libraries in
-   both arms was a transient filesystem failure, not a code defect.** Re-running
-   `pipeline_fs.sh check` now gives `OK` for all 10 in each arm, and reproducing
-   `find_r1` step by step returns `n=1`, rc=0. `$FSV_FASTQ` symlinks into
-   `/nemo/stp/sequencing/`, a separate filesystem, which was briefly unreadable at
-   21:03 on 2026-07-28 — the same window in which the driving agent lost its
-   connection. `find -L` already handles the symlink correctly and says so at
-   `config.sh:87`.
+7. **STILL OPEN: the `check` stage's 20/20 `MISS` does not reproduce, but its
+   cause is UNKNOWN.** Do not close this on the strength of "it works now".
 
-   **Two wrong explanations on the way, and the second was worse.** First I blamed
-   the glob for missing the lane field — but `ZHA8833A9_S*_R1_001.fastq.gz` does
-   match `ZHA8833A9_S108_L007_R1_001.fastq.gz` uniquely, and the `ls` I cited as
-   evidence used a *broader* pattern and never ran the checker's own glob: the
-   listing I called confirmation actually contradicted the claim. Then I labelled
-   the failure cosmetic, which is the one conclusion a validator failing 20/20
-   does not license.
+   Established: re-running `pipeline_fs.sh check` today gives `OK` for all 10
+   libraries in both arms; `find_r1` reproduced step by step gives `n=1`, rc=0; the
+   `MISS` message names the same path `$FSV_FASTQ` resolves to now, so the checker
+   was not pointed elsewhere; `find -L` handles the `/nemo/stp/sequencing/` symlink
+   and `config.sh:87` says why. No result depends on it — all ten libraries
+   reconcile through to pickles.
 
-   **Two method notes worth keeping.** To test a glob, run that glob — a broader
-   pattern matching is not evidence the narrower one matches. And when a validator
-   fails on *every* input, suspect the environment before the validator: a uniform
-   failure is far more often infrastructure than logic.
+   Not established: **why it failed.** I wrote in v2 of this file that the delivery
+   filesystem was "briefly unreadable at 21:03 on 2026-07-28" and marked the item
+   RESOLVED. **That was inference presented as diagnosis.** Nothing I ran measured
+   filesystem availability at that time; the mount's `stat` gives only its March
+   mtime, and the `cutadapt_*.log` / `prep_*.tsv` files I cited as corroboration
+   **do not exist at that path** — an earlier listing of them came from elsewhere,
+   which I failed to notice. A transient mount failure is still the most plausible
+   hypothesis (it coincides with the driving agent losing its connection) but it is
+   untested.
+
+   To actually diagnose it: instrument the `check` stage to log `find`'s exit
+   status and `stat` of `$FSV_FASTQ` on failure, and leave it in place. A retro
+   diagnosis is not available — the evidence needed was never captured.
+
+   **Three errors on the way, each worse than the last.** (1) Blamed the glob for
+   missing the lane field, when it matches uniquely — and the `ls` I called
+   confirmation used a *broader* pattern and never ran the checker's own glob, so my
+   evidence contradicted my claim. (2) Called a 20/20 validator failure cosmetic.
+   (3) Named an untested cause and marked the item resolved.
+
+   **Method notes.** To test a glob, run that glob. When a validator fails on every
+   input, suspect the environment before the validator — but suspecting is not
+   diagnosing, and "not reproducible" is a different claim from "cause known".

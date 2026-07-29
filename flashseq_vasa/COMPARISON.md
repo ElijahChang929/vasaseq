@@ -260,28 +260,44 @@ FSV_ARM=vasalen code/flashseq_vasa/pipeline_fs.sh check prep map assign pickle1 
 
 `config.sh` is the only file meant to be edited.
 
-**DIAGNOSED (2026-07-29): the `check` stage's `MISS` for all 10 libraries was a
-transient filesystem failure, not a code defect.**
+**NOT REPRODUCIBLE NOW, CAUSE STILL UNKNOWN — do not treat as diagnosed.** The
+`check` stage reported `MISS` for all 10 libraries in both arms on 2026-07-28
+(`check_native.txt` 21:03:06, `check_vasalen.txt` 21:03:07).
 
-`$FSV_FASTQ` is a symlink into `/nemo/stp/sequencing/` — a different filesystem
-from the working directory. `find_r1` uses `find -L` precisely to follow it
-(documented at `config.sh:87`), and re-running `pipeline_fs.sh check` for both
-arms now gives **`OK` for all 10 libraries in each** (`ZHA8833A1_S100_L007` …
-`ZHA8833A10_S109_L007`). Reproducing `find_r1` step by step returns `n=1`, rc=0.
-So the delivery filesystem was briefly unreadable at 21:03 on 2026-07-28, when the
-check ran — the same window in which the driving agent lost its connection.
+What is actually established:
 
-**My first two explanations were both wrong, and the second was worse than the
-first.** I initially blamed the glob for missing the lane field — but
-`ZHA8833A9_S*_R1_001.fastq.gz` does match `ZHA8833A9_S108_L007_R1_001.fastq.gz`
-uniquely (`*` spans `108_L007`), and the `ls` I cited as evidence used a broader
-pattern (`ZHA8833A9*R1*.fastq.gz`) and never tested the checker's own glob. I then
-labelled the failure cosmetic, which is the one conclusion a validator failing
-20/20 does not license.
+- **It does not reproduce.** Re-running `pipeline_fs.sh check` for both arms today
+  gives `OK` for all 10 libraries in each, and reproducing `find_r1` step by step
+  returns `n=1`, rc=0.
+- **The `MISS` message names the same path `$FSV_FASTQ` resolves to now**
+  (`.../RN26038/20260325_LH00442_0237_B23GT7GLT3/fastq`), so the checker was not
+  looking somewhere else.
+- **`find -L` handles the symlink correctly** — `$FSV_FASTQ` points into
+  `/nemo/stp/sequencing/`, and `config.sh:87` documents the `-L` for exactly that
+  reason.
+- **No result depends on it**: the ten libraries produced trimmed FASTQs, BAMs,
+  BEDs and pickles whose read counts reconcile, so the pipeline was not starved of
+  data.
 
-**Method notes: to test a glob, run that glob** — a broader pattern matching is not
-evidence the narrower one matches. And when a validator fails on *every* input,
-suspect the environment before the validator.
+What is **not** established: *why* it failed. I asserted in an earlier version of
+this file that the delivery filesystem was "briefly unreadable at 21:03" — **that
+was inference presented as diagnosis, and I never tested it.** No probe in this
+work measured filesystem availability at that time; the mount's `stat` shows only
+its March mtime, and the `cutadapt_*.log` / `prep_*.tsv` files I first cited as
+corroboration **do not exist at that path**. A transient mount failure remains the
+most plausible explanation — the same window in which the driving agent lost its
+connection — but it is a hypothesis.
+
+**Three errors on the way to this, each worse than the last.** (1) I blamed the
+glob for missing the lane field, when `ZHA8833A9_S*_R1_001.fastq.gz` matches
+`ZHA8833A9_S108_L007_R1_001.fastq.gz` uniquely — and the `ls` I cited used a
+*broader* pattern and never ran the checker's own glob, so my evidence contradicted
+my claim. (2) I then called a 20/20 validator failure cosmetic. (3) I then named an
+untested cause and marked the item resolved.
+
+**Method notes:** to test a glob, run that glob. When a validator fails on every
+input, suspect the environment before the validator — but *suspecting* is not
+*diagnosing*. "Not reproducible" and "cause known" are different claims.
 
 ## Outputs
 

@@ -1,0 +1,1299 @@
+---
+title: "Plate-based VASA-seq on mouse embryo cells — the whole run, demultiplexing to comparison"
+subtitle: "Sample ZHA9292A1 (run PM26037) and FLASH-seq RN26038 · GRCm39 / Ensembl 116"
+author: "Guangxin Zhang"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-expand: 2
+    code-fold: false
+    embed-resources: true
+    theme: cosmo
+engine: jupyter
+jupyter: bash
+---
+
+## How to read this document
+
+This is the whole project in one file: from the raw FASTQ pair off the sequencer,
+through working out what the library structure actually is, demultiplexing it,
+trimming, rRNA depletion, mapping, gene assignment, count tables, the
+analysis-ready matrix, and finally the comparison against FLASH-seq.
+
+**The standard it is written to:** you open this file, read it top to bottom, run
+it, and land on exactly the numbers reported. Where a step came from the published
+VASA-seq codebase, the code is **copied in verbatim** rather than pointed at, so
+nothing here depends on a path that might move.
+
+**How to run it.** Open the `.qmd` in VS Code (Remote-SSH to a NEMO login node),
+then get a compute shell — `srun --partition=nint --pty --mem=32G bash` — and
+execute chunks one at a time. The jupyter bash engine holds **one persistent
+shell** for the entire document, so a variable set in §1 is still set in §12.
+
+**Never run the heavy chunks on a login node.** The login-node memory cgroup kills
+processes *silently*: you get a truncated output and a cheerful exit code.
+
+**What is executable here and what is not.** Chunks that read logs, recompute
+statistics and rebuild tables run in minutes and are live. The five stages that
+take hours — demultiplexing 216 M reads, trimming, mapping, gene assignment, and
+the count-pickle build — are given as the exact commands with their measured
+runtime and memory, in fenced blocks that do **not** execute. Every number they
+produced is then re-derived here from their logs and outputs, which is what makes
+the claims checkable without a 40-hour re-run.
+
+Read §14 before quoting anything: it separates what this data supports from what
+it does not.
+
+```{bash}
+#| label: setup
+set -u
+
+PROJ=/nemo/lab/turnerj/working/guangxin/vasaseq
+CODE=$PROJ/code
+OWN=$CODE/I_Gene_expression/own_version      # the fork: our changes live here
+UP=$CODE/I_Gene_expression/a_Mapping         # upstream VASA-seq, unmodified
+FV=$CODE/flashseq_vasa                       # the FLASH-seq comparison fork
+FS=$CODE/flashseq                            # earlier FLASH-seq QC
+
+SAMPLE=ZHA9292A1
+OUT=$PROJ/data/PM26037/out
+CELLS=$OUT/cells
+LOGS=$OUT/logs
+ANA=$OUT/analysis
+RES=$PROJ/res/flashseq_vasa
+
+REFDIR=/nemo/lab/turnerj/working/guangxin/reference/vasaseq/mouse_GRCm39_E116
+RRNA_FA=$REFDIR/unique_rRNA_mouse.v2.fa
+REF_BED=$REFDIR/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed
+STAR_INDEX=/nemo/lab/turnerj/working/guangxin/reference/genomes/mus_musculus/GRCm39/star_index_151_r116
+
+CONDA_SH=/camp/apps/eb/software/Anaconda3/2024.10-1/etc/profile.d/conda.sh
+VASA_ENV=/nemo/lab/turnerj/working/guangxin/envs/vasa
+
+mkdir -p "$RES"
+echo "sample : $SAMPLE"
+echo "outdir : $OUT"
+```
+
+```{bash}
+#| label: versions
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+python3 -c "import sys, pandas, numpy, pysam; \
+print('python ', sys.version.split()[0]); print('pandas ', pandas.__version__); \
+print('numpy  ', numpy.__version__);      print('pysam  ', pysam.__version__)"
+echo ""
+echo "rRNA reference md5 : $(md5sum "$RRNA_FA"  | cut -c1-32)"
+echo "annotation BED md5 : $(md5sum "$REF_BED" | cut -c1-32)"
+echo "genome             : GRCm39, Ensembl 116"
+```
+
+**pandas must stay on 2.x.** Upstream `countTables_fromPickle.py` calls
+`DataFrame.applymap`, deprecated in pandas 2.1 and **removed in 3.0**. If a re-run
+reports pandas 3.x, §8 will fail. Rebuild the environment pinned rather than
+editing the upstream script — that was an explicit decision (§15).
+
+---
+
+# Part I — Working out what the library is
+
+## 1. The problem: this library is not the published one
+
+The published VASA-plate protocol is CEL-seq2-derived: 384 barcodes of 8 nt, a
+6 nt UMI, and no uninformative prefix. **None of that is true of this library.** It
+was built manually at 20× the published system volume with a changed library
+structure, so every parameter that describes the read layout had to be measured
+from the data rather than inherited.
+
+Getting this wrong does not throw an error — it silently assigns reads to the
+wrong cells, or to no cell, and the pipeline runs happily to completion. So the
+measurements below are the foundation of everything downstream.
+
+### 1a. There is a 21 nt uninformative prefix on both mates
+
+Per-position base composition over 100 k reads:
+
+| mate | positions 1–21 | what it is | fixed at |
+|---|---|---|---|
+| R1 | `GAGTTCTACAGTCCGACGATC` | 3′ end of the RA5 adapter | 98–99% per position |
+| R2 | `CCTTGGCACCCGAGAATTCCA` | revcomp of RA3 (`TGGAATTCTCGGGTGCCAAGG`) | 98–99% per position |
+
+Position 22 goes random on both mates. So `SKIP5=21` is right for both, and the
+per-mate overrides are not needed. **This is the single biggest departure from the
+published data** — with the upstream default of `skip5=0`, the barcode block would
+be read out of the middle of an adapter.
+
+### 1b. The barcode block is 6+6, not the CEL-seq2 6+8
+
+Measured on R1 at absolute positions, i.e. after the 21 nt prefix:
+
+| positions | observation | conclusion |
+|---|---|---|
+| 22–27 | all 4096 6-mers seen, near-flat composition | **UMI, 6 nt** |
+| 28–33 | strongly structured, 16 sequences dominate | **cell barcode, 6 nt** |
+| 34+ | 93% T, decaying over ~24 nt | polyT |
+
+The tell that rules out an 8 nt barcode: the 8-mer at 28–35 is always
+`<barcode>TT` — the barcode plus the first two bases of the polyT. And the UMI
+comes **first** (`UMI_FIRST=yes`), as in CEL-seq2/VASA.
+
+A 6 nt UMI has a hard consequence that returns in §8: only `4^6 = 4096` distinct
+UMIs exist per gene, so any gene with more than a few thousand molecules
+saturates.
+
+### 1c. The 16 barcodes, read off the data
+
+`bc_celseq2.tsv` does not apply — that is 384 × 8 nt. This library uses 16 × 6 nt.
+
+```{bash}
+#| label: barcodes
+set -u
+echo "barcode  cellID"
+cat "$OWN/bc_PM26037_6nt.tsv"
+echo ""
+echo "n = $(wc -l < "$OWN/bc_PM26037_6nt.tsv") barcodes"
+echo ""
+echo "Pairs differing only in their last two bases (why BC_HAMMING must stay 0):"
+awk '{print $1}' "$OWN/bc_PM26037_6nt.tsv" | sort > /tmp/_bc
+while read -r b; do
+  pre=${b:0:4}
+  n=$(grep -c "^$pre" /tmp/_bc)
+  [ "$n" -gt 1 ] && echo "  $pre** -> $(grep "^$pre" /tmp/_bc | tr '\n' ' ')"
+done < /tmp/_bc | sort -u
+```
+
+**`BC_HAMMING=0` is load-bearing, not conservatism.** Three barcode pairs differ
+only in their last two bases, so a 1-mismatch variant of one is a 1-mismatch
+variant of the other. `concatenator.py` drops ambiguous variants anyway, so
+raising the tolerance buys nothing and costs runtime.
+
+Cell IDs `001`–`016` are assigned in **alphabetical order of the whitelist**, which
+is *not* abundance order. Cell `007` is the deepest; `001`, `014`, `015`, `016` are
+the four blanks (§9).
+
+---
+
+# Part II — The pipeline, step by step
+
+The seven steps below are driven by `own_version/pipeline.sh`, which is a fork.
+The convention, established before this session and kept throughout: **upstream
+scripts in `a_Mapping/` receive explanatory comments only; behaviour changes go
+into `own_version/`,** with the upstream original left callable and verified
+equivalent. Where a fork exists, the difference is stated.
+
+A second convention that saved this project twice: **counting output files proves
+nothing.** Several upstream scripts end in a bare `gzip`, which leaves the previous
+run's output in place if it fails. `pipeline.sh` therefore clears each target
+before writing (`rm_stale`) and checks that every output is *newer than its input*
+before allowing the next step. Step 6 globs `*.singlemappers_genes.bed.gz`, so one
+stale file there is silently folded into the count tables.
+
+## 2. Step 1 — demultiplexing
+
+**This is the step the whole project rests on.** It reads the barcode from R1,
+looks it up in the whitelist, and writes the R2 cDNA out to one FASTQ per cell with
+the barcode, UMI and their qualities encoded into the read name.
+
+The command, as run:
+
+```bash
+# 216 M read pairs, sharded 16-ways. 41 minutes wall.
+FASTQ_DIR=/nemo/lab/turnerj/working/guangxin/vasaseq/data/PM26037
+own_version/pipeline.sh step1
+
+# which resolves to, per shard:
+own_version/concatenator.py --fqf <shard> \
+    --cbcfile own_version/bc_PM26037_6nt.tsv --cbchd 0 \
+    --lenumi 6 --lencbc 6 --bcread R1 --bioread R2 \
+    --skip5 21 --umifirst --demux --outdir <out>
+```
+
+Sharding is ours, not upstream: `zcat | split -l 8000000` into 109 shards of 2 M
+reads, 16 concurrent, then merge per cell. Upstream runs one process over the
+whole file. The split is on a multiple of 4 lines so FASTQ records are never cut.
+
+The part of `concatenator.py` that does the actual work, copied verbatim so this
+document does not depend on the file:
+
+```python
+# --- split the barcode block into cell barcode vs UMI, honoring order ---
+if not umifirst:                   # layout [cell-barcode | UMI]
+    cellbcseq = bcseq[:lcbc]       # first lcbc bases = cell barcode
+    umiseq = bcseq[lcbc:]          # rest = UMI
+    cellbcphred = bcphred[:lcbc]
+    umiphred = bcphred[lcbc:]
+else:                              # layout [UMI | cell-barcode]  (VASA-plate)
+    cellbcseq = bcseq[lumi:]       # after the UMI = cell barcode
+    umiseq = bcseq[:lumi]          # first lumi bases = UMI
+    cellbcphred = bcphred[lumi:]
+    umiphred = bcphred[:lumi]
+
+try:
+    cellID, originalBC = allbc_df.loc[cellbcseq]  # KeyError if not in whitelist
+    ns += 1                                       # matched -> count as kept
+    # Shift barcode/UMI quality chars up by 32 (ASCII) so they cannot be
+    # mistaken for the biological read's phred string later on.
+    cellbcphred = ''.join([chr(ord(c)+32) for c in cellbcphred])
+    umiphred    = ''.join([chr(ord(c)+32) for c in umiphred])
+    name = ';'.join([n1] + [':'.join(x) for x in zip(
+        ['SS','CB','QT','RX','RQ','SM'],
+        [cellbcseq, originalBC, cellbcphred, umiseq, umiphred, str(cellID).zfill(3)])])
+    s, q = (s1, q1) if bioread == 'R1' else (s2, q2)
+    fout[cellbcseq].write('\n'.join([name, s, '+', q, '']))
+except:
+    continue                       # barcode not in whitelist -> drop
+```
+
+Two details that matter downstream. The **`+32` quality shift** is why barcode
+quality strings cannot be confused with the read's own phred later. And the
+**`;SM:<cellID>`** tag is what lets step 6 recover the cell identity from the read
+name (`CELLID_FROM=r`).
+
+```{bash}
+#| label: step1-result
+set -u
+cat "$LOGS/step1.log"
+echo ""
+echo "per-cell FASTQs produced: $(ls "$CELLS"/${SAMPLE}_*_cbc.fastq.gz 2>/dev/null | wc -l)"
+```
+
+### The barcode rate is 89.71%, and `step1_extract.summary` is stale
+
+**`step1_extract.summary` says 194,316,570 barcoded reads (89.86%). That number is
+wrong. The correct figure is 193,993,061 (89.71%)** — and the difference is worth
+the paragraphs below, because chasing it verified the entire read-accounting chain.
+
+The chunk below re-derives every number from the files rather than from the log:
+
+```{bash}
+#| label: step1-reconcile
+set -u
+RAW=216233324                     # counted directly from the delivered FASTQs
+echo "raw R1 reads (counted)                : $RAW"
+echo "raw R2 reads (counted)                : $RAW   (R1 == R2)"
+echo ""
+echo "reads actually on disk, per cell FASTQ:"
+tot=0
+for f in "$CELLS"/${SAMPLE}_*_cbc.fastq.gz; do
+  cc=$(basename "$f" | sed -E 's/.*_([0-9]{3})_cbc\.fastq\.gz/\1/')
+  a=$(awk '/^reads /{print $2; exit}' "${f%_cbc.fastq.gz}_cbc_bcanchor.log" 2>/dev/null)
+  printf "  %s  bcanchor_log=%'12d\n" "$cc" "${a:-0}"
+  tot=$((tot + ${a:-0}))
+done
+echo ""
+printf "  sum over cells                       : %'d\n" "$tot"
+printf "  step2 'in' column total              : %'d\n" 193993061
+printf "  step1_extract.summary claims         : %'d\n" 194316570
+echo ""
+awk -v t="$tot" -v raw="$RAW" 'BEGIN{printf "  CORRECT barcoded fraction            : %d / %d = %.4f (%.2f%%)\n", t, raw, t/raw, 100*t/raw}'
+awk -v raw="$RAW" 'BEGIN{printf "  what the stale summary implies       : 194316570 / %d = %.4f (%.2f%%)\n", raw, 194316570/raw, 100*194316570/raw}'
+awk 'BEGIN{printf "  discrepancy                          : %d reads (%.4f%% of barcoded)\n", 194316570-193993061, 100*(194316570-193993061)/194316570}'
+```
+
+Three quantities agree **exactly** — the per-cell FASTQs counted read by read, the
+`*_bcanchor.log` counts that step 2 reports, and step 2's own `in` column: all
+**193,993,061**. And the raw FASTQs contain **216,233,324** read pairs, which matches
+step 1's `total sequenced reads` exactly. So the denominator is right and only the
+numerator is off.
+
+**What the gap is not.** I tested each mechanism rather than reasoning about it:
+
+| hypothesis | test | result |
+|---|---|---|
+| `concatenator.py` counts before a write that can fail | ran it on a 2 M-read slice; compared `ns` to reads written | **exact, diff 0** |
+| the shard-log summation double-counts | 3-shard run; `find -name '*.log'` matches 3 stdout + 3 summary logs, but stdout logs carry **0** counter lines | **exact, diff 0** |
+| shard-count-dependent loss | reproduced the real **109-shard** geometry; per-shard counter vs written, all 109 | **0 mismatches** |
+| merge takes its cell list from shard 0 only | all 109 shards produced all 16 cells; unexpanded globs error without losing data | **not triggered** |
+
+The current code is sound at the exact geometry that produced this data.
+
+**What it is.** The cell FASTQs were written **2026-07-24 14:36–14:38**.
+`concatenator.py` first entered git at **2026-07-26 19:03** (`8ef7f6b`) — two days
+*later*. Step 1 therefore ran against an **uncommitted, now-unrecoverable version**
+of the script, and the 194,316,570 is that version's count. There is no artefact of
+it left to test.
+
+**So: use 89.71%.** The on-disk reads are the ones every downstream step consumed,
+they are internally consistent across three independent counts, and the pipeline
+output is unaffected — this is a stale *log*, not lost data. I have **not** re-run
+step 1 to regenerate the summary: it would take 41 minutes and would overwrite the
+FASTQs that all seven downstream steps were built on, to fix a number this document
+now derives correctly from the files.
+
+**The lesson, which is the real reason this is written up at length:** a summary log
+is not a measurement. This one survived two days, a git commit, and several
+documents before anyone counted the reads it claimed to describe. For a manually
+built library at 20× volume, **89.71% is a good number** — it says the barcode layout
+in §1 is right, because a wrong `SKIP5` or barcode length would put this in the low
+single digits.
+
+## 3. Step 2 — trimming
+
+The step where the fork earns its keep. Upstream's second pass cuts at the first
+run of 6 identical bases and discards everything after it. On this library that
+truncates **49% of the reads that have no poly-A tail at all** (median loss 120 of
+130 bases) while never removing the adapter that is actually in the way.
+
+```bash
+# 16 cells, 16 concurrent. 21m38s.
+own_version/pipeline.sh step2      # TRIM_MODE=vasa
+```
+
+`own_version/trim.sh` runs three passes where upstream runs two:
+
+| pass | what | why |
+|---|---|---|
+| 0 | `trim_bc_anchor.py` | anchor on the barcode so pass 1 knows where the insert starts |
+| 1 | `trim_galore --length 20` | quality + standard adapter |
+| 2 | `cutadapt -a <3' read-through> -a A{20} -a G{20} -g T{20}` | the real read-through, and poly-A/G as **real runs** |
+
+The 3′ read-through adapter was **measured, not assumed**: 68,250 reads anchored on
+the 16 nt that is unambiguously revcomp of R1's 5′ prefix, then a per-position
+consensus with ≥97% agreement out to position 55. It is
+
+```
+GATCGTCGGACTGTAGAACTC CTGTCTCTTATACACATCT
+└─ revcomp(R1 5' prefix) ─┘ └─ Nextera mosaic ─┘
+```
+
+TrimGalore auto-detects only the Nextera half — which **starts 21 nt too late**.
+Re-derive this for any new library rather than trusting the constant.
+
+Poly-A and poly-G are removed as runs of 20 (or 10 running off the read end), not
+as the 6-mers upstream used. `legacy` mode reproduces upstream byte-for-byte and is
+kept for comparison; the benchmark is in `data/PM26037/trimtest/`.
+
+```{bash}
+#| label: step2-result
+set -u
+sed -n '/cell/,$p' "$LOGS/step2.log"
+```
+
+**90,137,383 of 193,993,061 reads survive (46.5%).** Read the `anchor` column
+alongside it: the four blanks (`001`, `014`, `015`, `016`) show **31–43% anchor
+rate but only 22–25% kept**, while real cells show 19–31% anchor and 42–51% kept.
+The blanks are *enriched* for reads that anchor and then have nothing after them —
+adapter dimers, which is exactly what a well with no cell in it should produce.
+The controls already separate here, four steps before any expression is counted.
+
+## 4. Step 3 — rRNA depletion
+
+In-silico, not chemical: reads are aligned to an rRNA reference and the ribosomal
+ones are set aside. Both `bwa aln` and `bwa mem` are run and the union taken.
+
+```bash
+# 16 cells, 16 concurrent. 21m. Plus a gzip repair pass (job 50803001).
+own_version/pipeline.sh step3      # STRANDED=y
+# per cell:
+a_Mapping/ribo-bwamem.sh <rRNA.fa> <trimmed.fq.gz> <stem> <bwa> <samtools> y <scripts>
+```
+
+The classifier is upstream `riboread-selection.py`, unmodified. Copied verbatim
+because the strand flag it implements becomes the crux of Part IV:
+
+```python
+for i, r in enumerate(bam.fetch(until_eof=True)):
+    if cur is None or r.qname == cur:
+        reads.append(r); cur = r.qname
+    else:
+        # every alignment unmapped -> not ribosomal
+        if all(x.is_unmapped for x in reads):
+            write_nonribo(reads)
+        elif stranded == 'n':
+            write_ribo(reads)              # ANY alignment mapped
+        elif any((not x.is_unmapped) and (not x.is_reverse) for x in reads):
+            write_ribo(reads)              # a FORWARD alignment mapped
+        else:
+            write_nonribo(reads)
+        reads = [r]
+```
+
+Reads are grouped by name first: a read with several alignments is **one
+observation**, not several.
+
+`STRANDED=y` is not our choice — upstream's `run_mapping_stepwise.sh:41` sets it
+and `a_Mapping/README.md` says so twice. VASA is a stranded protocol.
+
+The reference is `unique_rRNA_mouse.v2.fa`, which carries the NCBI 47S unit
+`BK000964.3`. That matters: it lets the report break the residual down by 5′ETS /
+18S / ITS1 / 5.8S / ITS2 / 28S rather than just "rRNA".
+
+```{bash}
+#| label: step3-result
+set -u
+sed -n '/TABLE 1/,/^$/p' "$LOGS/step3.log" | head -24
+echo "..."
+grep -E "^\s+ALL" "$LOGS/step3.log" | head -2
+```
+
+```{bash}
+#| label: step3-selfcheck
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+# Second, independent check on the same quantity: read-weight the per-cell pct_y
+# figures derived FROM THE BAMs and confirm they reproduce step3.log's
+# whole-library rate. Two routes, one number.
+#
+# FORWARD DEPENDENCY, stated rather than hidden: the per-cell figures come from
+# verify_rrna_crossplate.py, which §12 runs. On a clean pass in document order
+# that file does not exist yet, so this chunk generates it here (~12 min over the
+# BAMs) and §12 then reuses it.
+if [ ! -s "$RES/verify_own_percell.tsv" ]; then
+    echo "verify_own_percell.tsv absent -- deriving it from the BAMs now"
+    PUB=$PROJ/data/ref/fastq_vasaplate/rrna_validation/unique_rRNA_human_mouse.v2
+    "$FV/verify_rrna_crossplate.py" "$CELLS" "$PUB" "$LOGS/step3.log" "$RES" \
+        > "$RES/verify_runbook.txt" 2>&1
+fi
+python3 - "$RES/verify_own_percell.tsv" <<'PYEOF'
+import sys
+import pandas as pd
+d = pd.read_csv(sys.argv[1], sep='\t')
+w = (d.pct_y * d.total).sum() / d.total.sum()
+print('read-weighted over all 16 barcodes, from the BAMs : %.3f%%' % w)
+print("step3.log whole-library                           : 21.39%")
+print('  -> %s' % ('MATCH' if abs(w - 21.39) < 0.02 else 'MISMATCH'))
+PYEOF
+```
+
+**21.39% of reads are ribosomal**, 19,282,729 of 90,137,383 — and this is *our own
+measurement on our own data*, not a figure from the paper.
+ The chunk above re-derives it
+from the BAMs by a different route and must reproduce step 3's whole-library rate.
+If it prints `MISMATCH`, stop: everything in Part IV rests on this predicate. Per cell it spans
+**10.49% to 25.09%**. The four blanks sit at the bottom of that range, which is
+consistent with them carrying little RNA of any kind.
+
+The `aln_len` column is ~23.7 nt for every real cell. That is the aligned length,
+and it is the number the FLASH-seq read-length control in §12 has to match.
+
+## 5. Step 4 — STAR mapping
+
+```bash
+# 16 cells sequentially, genome held in shared memory. 10m08s.
+own_version/pipeline.sh step4
+# per cell:
+STAR --runThreadN 16 --genomeDir <star_index_151_r116> --genomeLoad LoadAndKeep \
+     --readFilesIn <cell>.nonRibo.fastq.gz --readFilesCommand zcat \
+     --outFilterMultimapNmax 20 --outSAMunmapped Within \
+     --outSAMtype BAM Unsorted --outSAMattributes All \
+     --outFileNamePrefix <cell>.nonRibo_E99_
+```
+
+`--genomeLoad LoadAndExit` once, then `LoadAndKeep` per cell, then `Remove` on a
+trap — the index is ~30 GB and loading it 16 times would dominate the runtime.
+The `EXIT` trap matters: a crash without it leaves the genome pinned in shared
+memory on that node.
+
+`--outFilterMultimapNmax 20` is what makes step 5's multimapper rescue possible;
+`--outSAMunmapped Within` keeps unmapped reads in the BAM so the input count can be
+reconciled against step 3's output.
+
+**Provenance of the index:** produced by the FLASH-seq nf-core rnaseq run, at read
+length 151 with Ensembl 116. It has no standalone build script and does not need
+one — it is a versioned pipeline's output, which closed a long-standing "no
+provenance" item.
+
+```{bash}
+#| label: step4-result
+set -u
+grep -c "mapping" "$LOGS/step4.log" >/dev/null 2>&1 || true
+echo "BAMs: $(ls "$CELLS"/*_E99_Aligned.out.bam 2>/dev/null | wc -l)"
+echo ""
+echo "cell   STAR input   uniquely mapped   multi   step3 kept   input==kept?"
+for cc in 001 005 007 013 016; do
+  lf=$(ls "$CELLS"/*_${cc}_*_E99_Log.final.txt 2>/dev/null | head -1)
+  [ -z "$lf" ] && continue
+  inp=$(awk -F'|' '/Number of input reads/{gsub(/[ \t]/,"",$2); print $2}' "$lf")
+  uni=$(awk -F'|' '/Uniquely mapped reads %/{gsub(/[ \t]/,"",$2); print $2}' "$lf")
+  mul=$(awk -F'|' '/% of reads mapped to multiple loci/{gsub(/[ \t]/,"",$2); print $2}' "$lf")
+  # TABLE 1 columns: cell in ribo ribo% kept aln mem both aln_len
+  # -> kept is $5, NOT $4 ($4 is ribo%, which would fail this check on every cell)
+  kept=$(awk -v c="$cc" '$1==c {gsub(/,/,"",$5); print $5; exit}' \
+         <(sed -n '/TABLE 1/,/^$/p' "$LOGS/step3.log"))
+  same=$([ "$inp" = "$kept" ] && echo yes || echo "NO ($kept)")
+  printf "%s  %11s  %14s  %6s  %11s  %s\n" "$cc" "$inp" "$uni" "$mul" "$kept" "$same"
+done
+```
+
+That last column is the reconciliation: STAR's input read count must equal step 3's
+`kept` for every cell, or a stale file crept in between the two steps.
+
+## 6. Step 5 — assigning reads to genes
+
+```bash
+# 16 cells, 16 concurrent. 14m55s (job 50836431, under the v2 BED).
+own_version/pipeline.sh step5
+# per cell, two passes:
+own_version/deal_with_singlemappers.sh <bam> <REF_BED> y <samtools> <bedtools>
+own_version/deal_with_multimappers.sh  <bam> <REF_BED> y <samtools> <bedtools>
+```
+
+Both are forks of `a_Mapping/`. Reads are converted to BED and intersected with the
+annotation; each row is tagged with the gene, the biotype, and a **junction status**
+that is the rule everything in Part IV turns on:
+
+- **`jS:IN`** — the read is *contained within* the feature
+- `jS:OUT`, `jS:AMB` — overlapping but not contained, or ambiguous
+
+Multimappers are rescued by a biotype hierarchy rather than discarded: if all of a
+read's loci belong to one biotype class, it is assigned to that class.
+
+The annotation is `homemade_IntronExonTrna.v2.bed`. **v2 versus v1** is a real
+difference in results, not bookkeeping: v2 adds 1,137 cytoplasmic tRNA rows and
+applies a −1 bp coordinate fix. Under v1 every tRNA table came out empty.
+
+## 7. Step 6 — the count pickle
+
+The memory-hungry step, and the one to respect.
+
+```bash
+# ONE process over all 16 cells. 4h47m, 69.4 GB peak (job 50836432).
+own_version/pipeline.sh step6
+# which is:
+cd $OUT && a_Mapping/countTables_2pickle_cellsSpliced.py cells ZHA9292A1 vasa r
+```
+
+Upstream, unmodified. It reads every `*_genes.bed.gz`, groups by (gene, cell, UMI),
+and builds a nested `Counter` structure keyed by gene × cell, distinguishing
+**spliced** from **unspliced** by junction status. `CELLID_FROM=r` means the cell
+identity is read from the `;SM:` tag in the read name (§2) rather than the filename.
+
+Step 6 is **superlinear in BED size** — 69 MB took 28 minutes, 254 MB took 1h47m.
+That is why the FLASH-seq side (§11) runs it per library and merges.
+
+```{bash}
+#| label: step6-result
+set -u
+ls -la "$OUT/${SAMPLE}.pickle.gz" | awk '{printf "pickle: %.0f MB   %s %s\n", $5/1048576, $6, $7}'
+tail -1 "$LOGS/step6.log"
+```
+
+The `AttributeError: 'NoneType' object has no attribute 'dumps'` in `step6.log` is
+cosmetic — it is `multiprocess.Pool.__del__` firing during interpreter teardown
+*after* the pickle is written. Not a failure.
+
+## 8. Step 7 — count tables
+
+Before spending 30 minutes single-threaded, this run was pre-flighted. Step 7 had
+already destroyed one earlier run in this repo (`IndexError` in `reduceGeneName`,
+on gene names that broke an undocumented 4-field naming contract), and the v2 BED
+adds 1,137 tRNA rows whose names are *deliberately shaped unlike every other row*
+— the same class of change. `step7_precheck.py` replays step 7's own string
+operations over all 305,398 index labels first.
+
+```bash
+own_version/step7_precheck.py $OUT/ZHA9292A1.pickle.gz $OUT/cells $OUT \
+    $OUT/logs/step7_precheck.txt          # 13 min, 12.94 GB. Exit 0.
+
+own_version/pipeline.sh step7             # 31m59s, 13.0 GB (job 50911069)
+# which is:
+cd $OUT && a_Mapping/countTables_fromPickle.py ZHA9292A1.pickle.gz ZHA9292A1 vasa y
+```
+
+**Sizing note for any re-run: `-c 2 --mem=48G -t 2:00:00` is enough.** The 200 G I
+requested was 15× the actual peak, because step 7's passes reuse memory rather than
+accumulating.
+
+Three flavours of every table are written, and they are **not** interchangeable:
+
+| table | what it counts | use for |
+|---|---|---|
+| `ReadCounts` | raw reads | mapping/QC bookkeeping; **cross-protocol composition** |
+| `UFICounts` | distinct UMIs seen | never as abundance for well-expressed genes |
+| `TranscriptCounts` | collision-corrected molecules | **abundance** |
+
+The correction is `t = ln(1 − x/K) / ln(1 − 1/K)` with `K = 4^6 = 4096` — the
+classic UMI-collision inverse. It is applied to the UFI table, not to read counts.
+
+```{bash}
+#| label: step7-result
+set -u
+echo "tables written: $(find "$OUT" -maxdepth 1 -name "${SAMPLE}*.tsv" | wc -l)"
+echo ""
+cat "$OUT/${SAMPLE}_mapStats.log"
+```
+
+`mapStats.log` is **21 lines** for a complete run — `countTables_fromPickle.py`
+makes exactly 21 unconditional `fout.write` calls, so any complete run writes 21
+regardless of dataset. (`CLAUDE.md` says 22; that disagrees with the script, which
+has no conditional writes. Check completeness against the write statements, not a
+remembered number.) A truncated log is the tell for a failed run — an earlier
+failure left an 8-line one.
+
+**tRNA is non-empty for the first time**: 13,565 reads over 332 entries collapsing
+to 90 isotype classes. Under the v1 BED this was zero. Detected in every real cell
+(280–1,247 UFIs) and near-absent in blanks (0–18).
+
+---
+
+# Part III — From count tables to an analysis-ready matrix
+
+## 9. QC: the library works, and the controls behave
+
+```{bash}
+#| label: step7-qc
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+# MPLBACKEND must be unset/Agg here. The jupyter bash kernel exports
+#   MPLBACKEND=module://matplotlib_inline.backend_inline
+# which matplotlib 3.10 in envs/vasa REJECTS with
+#   ValueError: Key backend: ... is not a valid value for backend
+# and step7_report.py then dies at `import matplotlib` -- AFTER it has already
+# truncated logs/step7_qc.png to 0 bytes. Interactively there is no MPLBACKEND
+# and it works, so this only ever bites inside a rendered runbook.
+MPLBACKEND=Agg "$OWN/step7_report.py" "$OUT" "$SAMPLE" > /dev/null
+sed -n '/PER-CELL/,/^====/p' "$LOGS/step7_report.txt" | head -26
+```
+
+Read that table as the answer to "did the chemistry work":
+
+| | 12 real cells | 4 blanks (001, 014, 015, 016) |
+|---|---|---|
+| genes detected | **32.6 – 65.1 k** | 11.3 – 16.0 k |
+| UFIs | 0.52 – 2.27 M | 35 – 68 k |
+| transcripts | 0.67 – 2.95 M | 35 – 69 k |
+| protein-coding | 73.4 – 79.6% | lower, with 2–3× more lncRNA |
+| **unspliced** | **28.69 – 33.14%** (median 30.9%) | 52.3 – 72.5% |
+
+**The unspliced fraction is the headline VASA number and it is right.** ~30%
+intronic is what a total-RNA method should give, it is what makes the
+spliced/unspliced tables meaningful for velocity, and it matches the earlier
+single-cell trials.
+
+It is also **stable across a 4.4× depth range** (671 k – 2.95 M transcripts). Not
+83× — that figure is the 16-barcode min-to-max span and its floor is blank cell
+016, and the blanks are precisely the cells whose unspliced fraction is *not*
+tight. Quote 4.4×.
+
+The blanks separate on **composition** as well as depth: 12–17 k gene entries on
+only 35–69 k molecules means their molecules are spread thinly across many genes
+rather than concentrated — the signature of ambient background, not of a cell.
+
+```{bash}
+#| label: qc-figure
+set -u
+sz=$(stat -c %s "$LOGS/step7_qc.png" 2>/dev/null || echo 0)
+printf "step7_qc.png: %d bytes\n" "$sz"
+# A 0-byte PNG is exactly what the MPLBACKEND failure above leaves behind, and it
+# is invisible unless asserted -- the chunk otherwise "succeeds".
+[ "$sz" -gt 50000 ] || { echo "FAIL: step7_qc.png is empty or truncated"; exit 1; }
+echo "OK: figure rendered in-env"
+```
+
+![Step-7 count-table QC. Orange = the four low-input barcodes.](../res/PM26037/step7_qc.png)
+
+## 10. The analysis set: three filters, and two findings left as flags
+
+Four decisions were put to the user rather than guessed, because each changes what
+the numbers mean. Three became filters:
+
+```bash
+own_version/make_analysis_matrix.py $OUT ZHA9292A1 001,014,015,016
+```
+
+| filter | why | user decision |
+|---|---|---|
+| drop the unnamed row | six rRNA × small-ncRNA labels reduce to `''`; 42 UFIs | drop |
+| drop 8 UMI-ceiling genes | at `x ≥ K` the correction clamps to a constant ~62,356 — not a measurement | drop |
+| drop the 4 blanks | processed identically **on purpose** — they are the control | confirmed blanks |
+
+```{bash}
+#| label: analysis-set
+set -u
+sed -n '/FILTER/,/^====/p' "$ANA/filter_report.txt" 2>/dev/null | head -22
+echo "..."
+grep -A7 "OPTIONAL downstream" "$ANA/filter_report.txt" 2>/dev/null
+```
+
+Everything dropped is written to `dropped_rows.tsv` with its reason — nothing
+disappears silently. **222,412 entries × 12 cells** come out.
+
+### The top of the ranking is not biology
+
+Before the ceiling filter, ranks 1–8 are all snRNA / snoRNA / MiscRna / ribozyme or
+multimapper combinations. Ranks 1–2 (*Rn7s2*-*Rn7s1*, *Cmss1*-lncRNA) are
+**hard-clamped in all 12 real cells** — their summed value is literally 12 × the
+ceiling, which says "saturated everywhere", not "highest expressed". Ranks 9–14 are
+honest numbers but still rRNA/snRNA/MiscRna or multi-locus entries.
+
+***Eef1a1* at rank 15 (63,039) is the first single-gene protein-coding entry.**
+Then *Hsp90ab1*, *Hsp90aa1*, *Hspa8* — translation and chaperone machinery, which is
+what a real top-expressed list should look like in embryonic cells.
+
+**So filter on biotype and on `'-' in name` too**, not just the 8-gene ceiling list.
+
+### Two findings reported, deliberately not filtered
+
+The script writes `gene_metadata.tsv` with `biotype`, `is_combination`,
+`n_genes_in_entry`, `pct_unspliced` and `intron_only`, and prints what each optional
+filter would leave — so filtering is one line downstream rather than a decision
+buried in a script.
+
+**Scope warning on `intron_only`.** The column is set on **every** entry that is
+≥95% unspliced, which is **151,434** of the 222,412 rows — most of the matrix, and
+unsurprising given that combination entries and non-coding biotypes are dominated by
+intronic signal. The figures quoted below are for **single-gene protein-coding
+entries only**: 12,640 intron-only among single-gene entries, of which **2,104** are
+protein-coding. Filtering on `intron_only` alone would remove two thirds of the
+matrix; combine it with `is_combination` and `biotype`.
+
+**2,104 single-gene protein-coding entries are ≥95% unspliced**, against a median of
+34.2%. Two of them (*Gphn* 99.8%, *Cmss1* 99.5%) rank in the top 15 by transcripts on
+**pure intronic signal**.
+
+```{bash}
+#| label: intron-only-distribution
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+python3 - "$ANA/gene_metadata.tsv" <<'PY'
+import sys
+import numpy as np, pandas as pd
+md = pd.read_csv(sys.argv[1], sep='\t', index_col=0)
+pc = md[(~md.is_combination) & (md.biotype == 'ProteinCoding')].dropna(subset=['pct_unspliced'])
+v = pc.pct_unspliced.values
+print('single-gene protein-coding entries with signal: %d' % len(v))
+h, e = np.histogram(v, bins=np.arange(0, 105, 5))
+for c, lo, hi in zip(h, e[:-1], e[1:]):
+    print('  %3.0f-%3.0f %6d %s' % (lo, hi, c, '#' * int(56 * c / h.max())))
+print('')
+print('  exactly 100%%      : %d' % int((v >= 99.999).sum()))
+print('  [95, 100)         : %d' % int(((v >= 95) & (v < 99.999)).sum()))
+print('  [90, 95)          : %d' % int(((v >= 90) & (v < 95)).sum()))
+print('  [80, 90)          : %d' % int(((v >= 80) & (v < 90)).sum()))
+PY
+```
+
+**Read that histogram carefully, because it does not say what I first claimed.** I
+described the ≥95% class as "a distinct population, not the tail of one
+distribution". The histogram shows **no gap**: the bins run 458 → 564 → 667 → 572 →
+629 → 2104 from 70% upward, a monotone rise into the top bin. The distribution is
+broad and right-heavy, not bimodal.
+
+What *is* real is a **spike at exactly 100%**: 1,361 of the 2,104 have literally zero
+exonic reads, against 743 spread over [95, 100). So the honest statement is that
+`intron_only` marks the **extreme tail** of a continuum, with a genuine point mass of
+entries that have no exonic signal at all. The threshold at 95% is a convention, not
+a boundary the data draws — which is precisely why this is a flag and not a filter.
+
+This is *not* obviously an artefact — nascent transcription is real signal in a
+total-RNA method and is the whole point of the spliced/unspliced tables. But an
+entry at 99.8% unspliced is not evidence the protein is expressed. So: flagged and
+quantified, left in, with the choice stated — exclude them, or use the spliced table
+for steady-state abundance, or keep them for velocity.
+
+![Intron-only entries: a second population sits at ~100% unspliced.](../res/PM26037/intron_only_check.png)
+
+---
+
+# Part IV — The FLASH-seq comparison
+
+The question asked: **the rRNA ratio, and the RNA species detected, between the two
+methods.** Two of four legs are complete.
+
+## 11. What FLASH-seq is here, and how it was quantified
+
+| | VASA-seq | FLASH-seq |
+|---|---|---|
+| sample | `ZHA9292A1`, PM26037 | `ZHA8833A1–A10`, RN26038 |
+| unit | 16 plate barcodes (12 cells + 4 blanks) | 10 bulk libraries, input titration in duplicate |
+| depth | 90.1 M total | ~17–23 M each |
+| chemistry | total RNA, fragmented + poly-A tailed, 6 nt UFI, stranded | poly-A primed, **no UMI**, unstranded, 151 nt PE |
+
+The comparison rung is **30 pg (A9, A10)** — roughly one cell-equivalent. A1–A6
+(1.5–30 ng) are the not-RNA-limited ceiling. **A8 is `qc_verdict=exclude`** (18.3%
+human *CALB1*, a well effect at H:1) but is processed and reported everywhere; the
+verdict filters interpretation, not QC.
+
+**Route (user decision): method-matched.** FLASH-seq reads go through VASA's own
+step 4–7 via the `smartseq_noUMI` protocol branch, making nf-core an independent
+cross-check rather than the comparator. Three constraints were established by a dry
+run *before* committing to ten libraries, each of which would otherwise have wasted
+the pass:
+
+- **Map R1 only.** `bedtools bamtobed` appends `/1`,`/2` to read names, and
+  `deal_with_*mappers.sh` appends `;CG:…;nM:<n>` *before* bamtobed runs — so the
+  mate suffix lands on the end of the `nM` value and step 6's `int()` raises.
+  Measured **1,033,528 of 1,033,528 PE rows unparseable** against 0 of 534,978 SE.
+  Upstream's contract, so `a_Mapping/` was not patched.
+- **`ReadCounts` only.** With one literal UMI key `'A'`, `UFICounts` degenerates to
+  a 0/1 detection mask and `bc2trans` is the identity on a mask, so
+  `TranscriptCounts == UFICounts` elementwise. Nine TSVs of each are still written
+  and carry **no abundance information**. `K` is inferred as 4, not 4096, so the
+  ceiling does not apply either.
+- **`stranded=n`, `filt_unigenes=n`, `CELLID_FROM=f`.** `filt_unigenes=y` uses
+  `ncells = max(5, round(0.01·ncols))` — a 384-plate heuristic that at 10 libraries
+  demands 50% of them.
+
+## 12. The rRNA leg — complete
+
+**FLASH-seq carries 4.5× less rRNA than this VASA plate.**
+
+```{bash}
+#| label: rrna-headline
+set -u
+grep -A4 "HEADLINE" "$RES/rrna_comparison_report.txt" 2>/dev/null
+echo ""
+grep -A4 "SENSITIVITY" "$RES/rrna_comparison_report.txt" 2>/dev/null
+echo ""
+grep -A2 "SELF-CHECK" "$RES/rrna_comparison_report.txt" 2>/dev/null
+```
+
+### Why this is one measurement, not two
+
+`code/flashseq/05_rrna_bwa.sh` invokes **VASA's own** `ribo-bwamem.sh` and
+`riboread-selection.py` — the same scripts §4 ran, unmodified — against the same
+reference, with both `bwa aln` and `bwa mem`. `config.sh` warns that reimplementing
+it would silently create a *second* method. That is why the two percentages are
+comparable at all.
+
+### The strand flag moves the answer twofold
+
+`stranded=y` is correct for VASA (stranded protocol, upstream specifies it) and
+**wrong for FLASH-seq**, whose forward strand carries only **49.1–50.5%** of
+ribosomal reads — `y` there would discard half of its genuine rRNA for a reason
+that has nothing to do with rRNA content.
+
+**Decision: each protocol under its own correct flag.** So the ratio is a comparison
+of two correctly-flagged measurements, **never a bare division**. Sensitivity:
+4.50× (each own flag) / **6.08×** (both `n`) / **8.95×** (both `y`).
+
+The asymmetry is measured: VASA's forward share is **76.1%**, FLASH-seq's ~50%, so
+one flag removes 23.9% of one library's ribosomal reads and 50.6% of the other's.
+
+### There is no published number to compare against
+
+I searched the full VASA-seq paper (Nature Biotechnology,
+`10.1038/s41587-022-01361-8`): **not one sentence containing "rRNA" or "ribosomal"
+also contains a `%` sign.** The rRNA statements are qualitative. So 21.39% is *our
+measurement on our data* and there was never a published percentage to preserve.
+An earlier framing of mine implied otherwise and was retracted.
+
+The published *plate data* is in the repo, though, so both sides can be counted with
+one predicate:
+
+The predicate is re-derived from the BAMs rather than read out of a log, and
+**asserted** against step 3's own output — if the classification implemented here is
+not the one `riboread-selection.py` applied, this fails loudly instead of producing a
+plausible wrong number. `verify_rrna_crossplate.py` (committed in `flashseq_vasa/`,
+~12 min) does it:
+
+```{bash}
+#| label: rrna-crossplate
+set -u
+source "$CONDA_SH"; conda activate "$VASA_ENV"
+PUB=$PROJ/data/ref/fastq_vasaplate/rrna_validation/unique_rRNA_human_mouse.v2
+# §4's self-check may already have run this; only re-derive if its output is absent.
+if [ ! -s "$RES/verify_runbook.txt" ]; then
+    "$FV/verify_rrna_crossplate.py" "$CELLS" "$PUB" "$LOGS/step3.log" "$RES" \
+        > "$RES/verify_runbook.txt" 2>&1
+fi
+grep -E "worst \|deviation\||PASS: same predicate" "$RES/verify_runbook.txt"
+echo ""
+grep -A5 "DERIVED RATIOS" "$RES/verify_runbook.txt" | head -8
+```
+
+This plate carries **~2.1× more rRNA than the published plate on medians** (2.33×
+pooled) but with a **14× tighter spread**. Both facts matter: a high median with a
+tight spread is a *systematic offset*, which can be tuned; a low median with a
+20-fold spread is *variable depletion*.
+
+**Caveat that must travel with the 2.1×:** the published side is the 8 cells a prior
+session pulled for reference validation — not a random sample — and was run against
+the human/mouse mixed reference where this plate used mouse-only.
+
+A second, mechanistically informative result: this plate's **real cells are
+markedly less strand-specific** (median 74.8% forward) than the published plate
+(95.4%), **while its own blanks are not** (86.4–93.6%, sitting with the published
+plate). That localises the cause to a step acting on abundant template, and rules
+out reference, aligner, predicate and plate-wide handling. **Antisense rRNA is ~24%
+of this library's ribosomal reads, not the few percent assumed.**
+
+![rRNA content and composition, both sides by the same route.](../res/flashseq_vasa/rrna_comparison.png)
+
+### Where the residual rRNA sits
+
+```{bash}
+#| label: rrna-subunits
+set -u
+sed -n '/subunit composition/,$p' "$RES/rrna_comparison_report.txt" 2>/dev/null | head -12
+```
+
+**Most of what survives poly-A selection in FLASH-seq is pre-rRNA, not mature
+rRNA** — 5′ETS ~41% of ribosomal reads against 28S ~26%. Mechanistically sensible:
+the 47S precursor is transient and carries non-templated ends, so it is more
+poly-A-accessible than mature 28S. It also locates the protocol gap in **mature
+28S**, exactly where VASA's depletion has the most to remove.
+
+### Do not use the annotation route for rRNA
+
+```{bash}
+#| label: rrna-biotype-trap
+set -u
+GTF=/nemo/lab/turnerj/working/guangxin/reference/genomes/mus_musculus/GRCm39/annotation/release-116/gtf/Mus_musculus.GRCm39.116.gtf
+echo "Rn45s / Rn28s / Rn5-8s genes in the rRNA biotype:"
+awk -F'\t' '$3=="gene" && $9~/gene_biotype "rRNA"/' "$GTF" \
+  | grep -cE 'gene_name "(Rn45s|Rn28s|Rn5-8s)"' || echo "  0  (the rDNA array is not in the primary assembly)"
+```
+
+Ensembl's `rRNA` biotype reads **0.47–1.40%** where alignment reads 3.50–6.44%,
+because on GRCm39 the rDNA array is collapsed out of the primary assembly and
+**99.93–99.999% of that class's signal comes from one 18S relic locus,
+`Rn18s-rs5`** (`ENSMUSG00000119584`). Mechanism: RSEM's implied mean fragment is
+195.1 nt and 99.7% of rRNA features are shorter, so the single 1,849 bp locus
+absorbs the class. **Label it "annotation-route 18S relic", never "rRNA" and never
+"5S".**
+
+## 13. The species leg — the read-length confound
+
+### Why a control was necessary
+
+The naive result was that FLASH-seq detects **zero tRNA**. That is not a finding
+about chemistry.
+
+```{bash}
+#| label: feature-lengths
+set -u
+zcat -f "$REF_BED" | awk -F'\t' '
+  { n=split($4,a,"_"); bt=a[n]; len=$3-$2; tot[bt]++; if (len<151) short[bt]++ }
+  END { printf "%-14s %9s %9s %7s\n","biotype","features","<151nt","pct"
+        split("tRNA rRNA miRNA snoRNA snRNA ProteinCoding lncRNA",w," ")
+        for (i in w) { bt=w[i]; if (tot[bt]>0)
+          printf "%-14s %9d %9d %6.1f%%\n", bt, tot[bt], short[bt], 100*short[bt]/tot[bt] } }'
+```
+
+`jS:IN` (§6) requires **containment**, and at 151 nt a FLASH-seq read cannot sit
+inside most small RNAs. In the dry run six reads overlapped a tRNA and **all six
+were discarded by containment**, while VASA cell 005 had 229 tRNA rows. Read length
+alone produces "FLASH-seq detects fewer short species" — so without a control the
+claim is unfalsifiable, and it is half of what was asked.
+
+### The design and result
+
+Both arms go through VASA's step 4–7, identical in every setting **except read
+length**: `native` (adapter-trimmed R1) and `vasalen` (additionally hard-trimmed to
+VASA's aligned-length distribution, measured from VASA's own STAR-input FASTQs
+rather than assumed from the ~23.7 nt mean).
+
+```{bash}
+#| label: shortbiotype
+set -u
+column -t -s$'\t' "$RES/shortbiotype_readlength6.tsv" 2>/dev/null
+```
+
+**Length-matching recovers 1.5–2.2× more short-RNA entries** on the six libraries
+complete in both arms (A1, A3, A4, A5, A8, A9 — including the 30 pg rung): ribozyme
+2.20×, snRNA 1.87×, miRNA 1.86×, snoRNA 1.70×, MiscRna 1.64×, scaRNA 1.50×.
+
+**Stable under the n=4 → n=6 upgrade** — every fold moved by ≤0.30 with the ordering
+essentially unchanged, which is the check that matters for a result reported before
+all ten libraries were in.
+
+Nuance: *MiscRna* recovers **entries** (1.64×) but not **reads** (0.96×). Trimming
+finds more distinct loci while splitting the same read mass across them — for
+abundant classes "recovery" means detection breadth, not extra signal.
+
+```{bash}
+#| label: containment-mechanism
+set -u
+cat "$RES/readlen_check.txt" 2>/dev/null | head -14
+```
+
+Reads ≥140 nt fall **82.4% → 55.4%** against VASA's 44.5%, and `jS:IN` containment
+rises **45.7% → 52.0%** against VASA's 55.7%. Both move in the predicted direction,
+which is what makes read length the demonstrated mechanism rather than a
+correlation.
+
+![Read length suppresses short RNA species; recovery is real but partial.](../res/flashseq_vasa/readlength_control.png)
+
+### What this licenses
+
+**Established:** the mechanism operates and it is large.
+
+**Not established:** that read length explains the *whole* gap. Recovery is partial
+— the trimmed arm still sits short of VASA on both metrics, and tRNA remains absent
+from the biotype scan even though the dedicated tRNA table nearly doubled (27 → 46
+rows, 361 → 754 reads).
+
+**The short-species axis is therefore confounded, not resolved.**
+
+### Composition, and the floor it puts under any difference
+
+```{bash}
+#| label: composition
+set -u
+column -t -s$'\t' "$RES/composition6_nonrRNA.tsv" 2>/dev/null | head -10
+```
+
+FLASH-seq is **84.15% protein-coding** of non-rRNA reads at native length — what a
+poly-A library should look like. The number to carry forward is the **Δ pp** column:
+read length **alone** moves ProteinCoding by **−2.6 pp** and pushes pseudogenes up,
+because shorter reads are less uniquely assignable so mass redistributes to
+paralogues.
+
+**Therefore any FLASH-seq↔VASA composition difference smaller than ~3 pp is inside
+the read-length effect and must not be attributed to protocol.**
+
+Denominator, per user decision: rRNA as % of all reads; every other biotype as % of
+the **non-rRNA remainder**, on both sides.
+
+### Still blocked
+
+The VASA side of the composition comparison, and depth-matched detection, need
+step-6 pickles for the remaining libraries (8/10 native, 7/10 vasalen at the time of
+writing; 7h40m–10h05m and 39–59 GB each).
+
+One decision is settled for when they land: **use the unfiltered `uniagg` VASA
+tables**, not `analysis/`. The UMI-ceiling filter drops 8 entries carrying **23.02%
+of uniagg reads**, whose removal shifts ProteinCoding by **+19.19 pp**. They were
+selected precisely *for* saturating the ceiling — i.e. for being the most abundant
+small RNAs, which is what a total-RNA protocol exists to capture. Correct for
+molecule counting, wrong for reads-vs-reads.
+
+## The read-vs-molecule asymmetry — intrinsic, always state it
+
+VASA counts **deduplicated molecules**; FLASH-seq via `smartseq_noUMI` counts
+**reads**. This cannot be corrected away.
+
+Measured: VASA read:UFI = **2.13–2.96 per cell** (median 2.57, pooled 2.69), and it
+is **expression-dependent** — Spearman +0.498 over 35,758 entries, rising 1.69 →
+2.91 across expression deciles. Because the bias runs in **both directions depending
+on class**, no single factor fixes it.
+
+**So: compare composition on VASA `ReadCounts`** (reads vs reads), and report
+VASA's molecule-based figures alongside as its own biology.
+
+---
+
+# Part V — What may be claimed, and what went wrong on the way
+
+## 14. Claims
+
+**May be claimed:**
+
+- The library structure is **21 nt prefix + 6 nt UMI + 6 nt barcode, 16 barcodes**,
+  each parameter measured from the data. **89.71%** of 216,233,324 reads carry a
+  whitelisted barcode — counted from the FASTQs, agreeing with the bcanchor logs and
+  step 2's `in` column. **Not 89.86%**: `step1_extract.summary` is stale (§2).
+- The chemistry works. 12 real cells give **32.6–65.1 k genes**, **0.67–2.95 M
+  transcripts**, **73.4–79.6% protein-coding**, and an unspliced fraction of
+  **28.69–33.14%** (median 30.9%) stable across **4.4×** of depth.
+- The four blanks behave as blanks at **every** stage — trimming, rRNA, detection,
+  composition — which is what makes them a usable control.
+- This plate's rRNA is **21.39%** of trimmed reads (10.49–25.09% per cell), our own
+  measurement under the flag upstream specifies.
+- FLASH-seq carries **~4.5× less rRNA**, one method both sides, each protocol under
+  its own correct flag. State the flags.
+- Most of FLASH-seq's residual rRNA is **pre-rRNA (5′ETS ~41%)**, not mature 28S
+  (~26%).
+- This plate carries **~2.1× more rRNA than the published plate** with a **14×
+  tighter spread** — systematic offset, not variable depletion. Provisional
+  magnitude.
+- Read length **materially suppresses** short-RNA detection at 151 nt: matching
+  VASA's length recovers **1.5–2.2×** more entries.
+- **Antisense rRNA is ~24%** of this library's ribosomal reads, and the real-cell /
+  blank split localises the cause to a template-abundance-dependent step.
+
+**May not be claimed:**
+
+- That FLASH-seq detects fewer short non-poly-A RNAs **because of its chemistry**.
+  Recovery on length-matching is partial; the axis is confounded.
+- Any composition difference against VASA smaller than **~3 pp**.
+- Anything from `TranscriptCounts` or `UFICounts` on the FLASH-seq side — a
+  detection mask, not abundance.
+- Any rRNA figure from the Ensembl `rRNA` biotype.
+- That the **8 UMI-ceiling genes** or the top of the raw ranking measure expression.
+- That **intron-only entries** (*Gphn*, *Cmss1*) are expressed protein.
+- That the unspliced fraction is stable over **83×** of depth — that span's floor is
+  a blank. It is 4.4× over real cells.
+- Any rRNA percentage attributed to the **VASA-seq paper**. It publishes none.
+- **89.86%** as the barcode-assignment rate, or `step1_extract.summary` as a source
+  for it. That figure came from an uncommitted version of `concatenator.py` and
+  exceeds the reads on disk by 323,509. Use 89.71%.
+
+```{bash}
+#| label: outputs
+set -u
+echo "=== VASA pipeline ==="
+find "$OUT" -maxdepth 1 -name "${SAMPLE}*.tsv" | wc -l | xargs echo "  count tables:"
+echo "  analysis set: $(ls "$ANA"/*.tsv 2>/dev/null | wc -l) files"
+echo "=== comparison ==="
+echo "  res/flashseq_vasa: $(ls "$RES" | wc -l) files"
+echo ""
+echo "RUNBOOK_COMPLETE"
+```
+
+## 15. Decisions taken — settled, do not re-open
+
+| item | decision |
+|---|---|
+| the unnamed row (42 UFIs) | drop |
+| the 8 UMI-ceiling genes | drop |
+| cells 001/014/015/016 | confirmed blanks, excluded from biology |
+| STAR index has no build script | **not a defect** — it is the nf-core rnaseq output |
+| `applymap` deprecation | **do not touch it**; env stays pinned at pandas 2.3.3 |
+| `ncells = max(5, round(0.01·n))` | leave at the upstream value |
+| matplotlib missing from `envs/vasa` | added, with `--freeze-installed` |
+| quantification route for FLASH-seq | method-matched through VASA's own steps |
+| rRNA denominator | rRNA vs all reads; other biotypes vs non-rRNA remainder |
+| comparison unit | per FLASH-seq library vs per VASA cell |
+| strand flag | each protocol under its own correct flag |
+| read-length confound | hard-trim FLASH-seq to VASA's length as the control |
+
+`matplotlib-base 3.10.9` was installed with `conda install --freeze-installed`,
+verified before and after: pandas 2.3.3 → 2.3.3, numpy 2.2.6 → 2.2.6, `applymap`
+still present. **The flag was load-bearing, not caution** — an install able to move
+pandas could have removed the method step 7 depends on.
+
+## 16. Resource use, so a re-run can be sized
+
+| stage | wall | peak RAM |
+|---|---|---|
+| step 1 demultiplex (216 M pairs, 109 shards) | 41 m | modest |
+| — re-verification of its read accounting (this session) | ~35 m | 16 GB |
+| step 2 trim (16 cells) | 21 m 38 s | modest |
+| step 3 rRNA (16 cells) | 21 m | modest |
+| step 4 STAR (16 cells, shared genome) | 10 m 08 s | ~30 GB index |
+| step 5 assign (16 cells) | 14 m 55 s | modest |
+| **step 6 pickle (16 cells, one process)** | **4 h 47 m** | **69.4 GB** |
+| step 7 tables | 31 m 59 s | **13.0 GB** — request 48 G, not 200 G |
+| step-7 precheck | 13 m | 12.94 GB |
+| FLASH-seq step 6, **per library** | 7 h 40 m – 10 h 05 m | 39–59 GB |
+| FLASH-seq step 6, 6 concurrent | — | ~220 GB of a 650 G request |
+| `05_rrna_bwa.sh` | 46 m | 778 MB |
+
+Step 6 is **superlinear in BED size** (69 MB → 28 m; 254 MB → 1 h 47 m), which is
+why the FLASH-seq side runs it per library and merges. `merge_pickles.py` reproduces
+upstream's parent tail exactly — the union of per-library dicts **is** the frame a
+combined run would have built, because `get_cellDict` is per-library independent —
+and it asserts the three properties that make that true (disjoint column keys,
+non-empty inputs, unioned row keys) rather than assuming them.
+
+## 17. Appendix — rejected approaches and my own errors
+
+Kept because each cost real time, and because the reasoning decays faster than the
+result.
+
+### Rejected on evidence
+
+**Upstream's second trimming pass.** Cuts at the first run of 6 identical bases and
+discards the rest: truncates 49% of reads with no poly-A tail (median loss 120 of 130
+bases) while never removing the adapter in the way. Replaced; `legacy` kept for
+comparison.
+
+**`BC_HAMMING=1`.** Three barcode pairs differ only in their last two bases, so
+1-mismatch variants are ambiguous and get dropped anyway.
+
+**Paired-end mapping through VASA's steps 5–6.** Structurally impossible: the mate
+suffix lands on the end of the `nM` value and step 6's `int()` raises. **1,033,528 of
+1,033,528 PE rows unparseable** against 0 of 534,978 SE. Upstream's contract; not
+patched. R1 only.
+
+**The Ensembl `rRNA` biotype as the rRNA measurement.** 0.47–1.40% against
+3.50–6.44% from alignment; one 18S relic locus carries the class. Also documented
+once as "essentially all 5S" — **that was wrong**, corrected in
+`NFCORE_CROSSCHECK.md`.
+
+**`TranscriptCounts` from the no-UMI path.** Not for the reason first assumed:
+`bc2trans` is applied to the UFI table, and with one literal UMI key that table is a
+0/1 mask on which `bc2trans` is the identity. So `TranscriptCounts == UFICounts`
+elementwise, verified.
+
+**A single strand flag for both protocols.** No flag treats both fairly (forward
+share 76.1% vs ~50%). All three pairings reported.
+
+**`filt_unigenes=y` at 10 libraries.** The threshold demands 50% of them.
+
+**`module load quarto/1.5.57-x64`** to render this document. Fails on this host —
+`ERROR: Unable to locate a modulefile`. The binary exists at
+`/camp/apps/eb/software/quarto/1.5.57-x64/bin/quarto` and reports 1.5.57; called by
+path in `render_runbook_direct.sh`.
+
+### My own errors, and what each should teach
+
+**A fabricated SLURM job id.** I reported `50910841` for the step-7 run; no tool
+output ever produced it. The real id is `50911069`, read from the job's own
+`slurm-50911069.out`. *Never write an identifier from memory — read it back.*
+
+**Flagging a discrepancy instead of chasing it.** I found step 1's summary
+(194,316,570 barcoded reads) exceeded step 2's input (193,993,061) by 323,509,
+offered a plausible mechanism, wrote "I did not verify that this is the cause", and
+moved on. That was the wrong call: a 0.17% gap in read accounting is either a bug or
+a stale artefact, and both matter.
+
+Chasing it properly took four tests and settled it. The counter is exact on a 2 M
+slice; the shard-log summation is exact at 3 shards; **all 109 shards** of a
+geometry-matched reproduction show zero counter-vs-written mismatches; and the
+merge's shard-0 cell list was never triggered because every shard produced all 16
+cells. Meanwhile three independent counts of the on-disk data agree exactly at
+193,993,061, and the raw FASTQs match step 1's denominator exactly.
+
+The answer: the FASTQs were written **2026-07-24 14:36**, and `concatenator.py`
+first entered git **2026-07-26 19:03** — the summary was produced by an uncommitted,
+unrecoverable version. **The correct rate is 89.71%, and `step1_extract.summary`
+should not be cited.** *A summary log is not a measurement; this one survived two
+days and several documents before anyone counted the reads it described.*
+
+**A comparison across different denominators.** I said the 12 real cells' assignment
+rate "brackets" an earlier 86.6%. It does not: that figure used STAR **mapped** reads
+as denominator, this one uses STAR **input**. On the common denominator the earlier
+cell reads 76.4%. *State the denominator before comparing two percentages.*
+
+**Crossing molecules with transcripts.** I reported "0.52–2.95 M transcripts"; 0.52 M
+was a **UFI** count. Correct: 0.52–2.27 M UFIs, 0.67–2.95 M transcripts.
+
+**Flattening the saturation ratios.** I said "ranks 1–8 are clamped at 12× the
+ceiling". Only ranks 1–2 are; rank 8 is 2.69×. The rest mix clamped and unclamped
+per-cell values, which is unusable for a subtler reason — the totals are not on a
+common scale.
+
+**A table count conflated with a log line count.** "21 tables" was `mapStats.log`'s
+21 *lines*. There are **20** tables.
+
+**Borrowing stability from the controls.** "4.5-point spread across an 83× depth
+range" — that span's floor is blank cell 016, and the blanks are exactly the cells
+whose unspliced fraction is not tight. Over real cells it is **4.4×**.
+
+**One colour meaning two things.** The QC figure used the blank-marker orange as a
+biotype series colour in a fourth panel. Redrawn.
+
+**Implying a published rRNA figure existed.** It does not. Retracted after searching
+the paper mechanically.
+
+**Two sensitivity ratios carried in prose and never recomputed.** I reported "5.9×
+and 9.0×" for the alternative flag pairings. Recomputed from the assembled table:
+**6.08× and 8.95×**. *This is what the rerun was for.*
+
+**The `check`-stage `MISS`, wrong three times.** `pipeline_fs.sh check` reported
+`MISS` for all 10 libraries in both arms on 2026-07-28 21:03. I said (1) the glob
+missed the lane field — it does not, `ZHA8833A9_S*_R1_001.fastq.gz` matches
+`ZHA8833A9_S108_L007_R1_001.fastq.gz` uniquely, and the `ls` I cited as evidence used
+a *broader* pattern and never ran the checker's own glob; (2) that the failure was
+cosmetic — the one conclusion a validator failing 20/20 does not license; (3) that
+the delivery filesystem was briefly unreadable — **never tested**, and the
+corroborating files I cited do not exist at that path.
+
+**It does not reproduce** (all 20 now `OK`, `find_r1` gives `n=1` rc=0) and **the
+cause is unknown.** To diagnose it the `check` stage must log `find`'s exit status
+and a `stat` of `$FSV_FASTQ` on failure; a retrospective diagnosis is unavailable
+because that evidence was never captured.
+
+*Three method notes, each paid for: to test a glob, run that glob. When a validator
+fails on every input, suspect the environment before the validator — but suspecting
+is not diagnosing. "Not reproducible" and "cause known" are different claims.*
+
+**Verifying a rendered runbook by grepping for error strings.** False-positives
+twice: on quarto's inlined ClipboardJS (`Error`, `Invalid`), and on the **echoed
+chunk source** — a runbook that prints `MISMATCH` on a failed self-check has that
+literal in its source, so the grep trips on the code that would report the problem.
+Scan `cell-output` blocks only, and assert on **positive sentinels**, because a chunk
+that never ran also emits no errors.
+
+### The one thing I would keep from all of it
+
+Every error above was caught by re-deriving a number from its source rather than
+re-reading my own prose. The two self-checks in this document exist for that reason:
+the predicate that must reproduce `step3.log` for all 16 barcodes, and the
+read-weighted figure that must land on 21.39% by a different route. **If either
+fails, stop and do not trust anything downstream of it.**

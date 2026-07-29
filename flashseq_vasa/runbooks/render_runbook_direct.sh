@@ -70,22 +70,38 @@ for m in re.finditer(r'<pre([^>]*)>(.*?)</pre>', doc, flags=re.S):
     print(html.unescape(re.sub(r'<[^>]+>', '', body)))
 PY
 
+# The completion sentinel is whatever the DOCUMENT emits, not a name hardcoded
+# here. Hardcoding it made a full render "fail" once because that runbook echoes
+# RUNBOOK_COMPLETE while this script was looking for PHASE_COMPLETE -- a verifier
+# that reports a false failure is as bad as one that reports a false pass.
+# Convention: the last chunk echoes a bare <SOMETHING>_COMPLETE token.
+SENTINEL=$(grep -oE '\b[A-Z][A-Z0-9_]*_COMPLETE\b' "$QMD" | sort -u | head -1)
+SENTINEL=${SENTINEL:-PHASE_COMPLETE}
+
 nerr=$(grep -ciE 'No such file or directory|command not found|Traceback \(most recent|MISSING /|NO FILES|MISMATCH|^FAIL' "$CHUNKTXT" || true)
-nsent=$(grep -c 'PHASE_COMPLETE' "$CHUNKTXT" || true)
-npass=$(grep -c 'PASS -- every number above is reproduced' "$CHUNKTXT" || true)
-nmatch=$(grep -c 'MATCH' "$CHUNKTXT" || true)
+nsent=$(grep -c "$SENTINEL" "$CHUNKTXT" || true)
 
 echo ""
 echo "VERIFY on $HTML  (chunk output only, $(wc -l < "$CHUNKTXT") lines)"
 echo "  error signatures      : $nerr   (expect 0)"
-echo "  PHASE_COMPLETE        : $nsent  (expect >=1; absent means it died early)"
-echo "  predicate self-check  : $npass  (expect 1: reproduces step3.log)"
-echo "  21.39% self-check     : $nmatch (expect >=1: MATCH)"
+echo "  sentinel '$SENTINEL' : $nsent  (expect >=1; absent means it died early)"
 echo "  size                  : $(stat -c %s "$HTML") bytes"
+
+# Self-checks are asserted only when the document declares them, so this script
+# works on any runbook rather than only the one it was written against.
+npass=1; nmatch=1
+if grep -q 'PASS: same predicate' "$QMD"; then
+    npass=$(grep -c 'PASS: same predicate' "$CHUNKTXT" || true)
+    echo "  predicate vs step3.log: $npass  (expect >=1)"
+fi
+if grep -q "reproduce step3.log whole-library" "$QMD"; then
+    nmatch=$(grep -c '\-> *MATCH' "$CHUNKTXT" || true)
+    echo "  21.39% recomputation  : $nmatch (expect >=1: MATCH)"
+fi
 
 rc_verify=0
 if [ "$nsent" -lt 1 ]; then
-    echo "VERIFY: FAIL -- sentinel absent, document did not run to the end" >&2
+    echo "VERIFY: FAIL -- sentinel '$SENTINEL' absent; document did not run to the end" >&2
     rc_verify=1
 fi
 if [ "$nerr" -gt 0 ]; then
@@ -95,7 +111,11 @@ if [ "$nerr" -gt 0 ]; then
     rc_verify=1
 fi
 if [ "$npass" -lt 1 ]; then
-    echo "VERIFY: FAIL -- the predicate self-check against step3.log did not pass" >&2
+    echo "VERIFY: FAIL -- the document declares a step3.log predicate check but it did not pass" >&2
+    rc_verify=1
+fi
+if [ "$nmatch" -lt 1 ]; then
+    echo "VERIFY: FAIL -- the document declares a 21.39% recomputation but it did not MATCH" >&2
     rc_verify=1
 fi
 

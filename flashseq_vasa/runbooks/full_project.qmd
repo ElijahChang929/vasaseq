@@ -1194,11 +1194,27 @@ its midpoint. nf-core ran qualimap over the same FLASH-seq BAMs, giving **3′/5
 0.93**. Our midpoint gives **0.89** — agrees. Our base gives **0.46** — does not, by
 2×. **So the midpoint profile is reported and the base numbers are diagnostic only.**
 
-I do not know why `base` disagrees, and the obvious explanation is **refuted**: if
-reads overhanging the transcript end lost their trailing bases, the effect would scale
-with read length and hit 151 nt FLASH-seq ~6× harder than ~24 nt VASA. Measured, the
-base-vs-mid 3′ deficit is **7.27 pp for VASA against 6.18 pp for FLASH-seq** — the
-larger deficit on the *shorter* reads, the opposite of the prediction.
+I do not know why `base` disagrees, and **my first explanation rested on a wrong
+number, so it is withdrawn.** I had claimed that reads overhanging the transcript end
+lose their trailing bases, which would scale with read length and hit "151 nt
+FLASH-seq ~6× harder than ~24 nt VASA" — and then called the hypothesis refuted
+because the measured deficit was *larger* for VASA (7.27 pp) than FLASH-seq (6.18 pp).
+
+**~24 nt was the wrong length.** That is the trimmed-read length from step 3's log,
+not the aligned length that matters here. Measured from the BAMs:
+
+| | aligned length p25 / p50 / p75 | mean |
+|---|---|---|
+| VASA cell 010 | 98 / **127** / 129 | 108.7 |
+| FLASH-seq native A1 | 125 / **150** / 151 | 132.3 |
+| FLASH-seq vasalen A1 | 76 / **112** / 129 | 99.5 |
+
+VASA's aligned reads are ~127 nt against FLASH-seq's ~150 nt, so **the predicted 6×
+asymmetry never existed** — and near-equal deficits are exactly what edge clipping
+*would* produce at near-equal read lengths. **Edge clipping is therefore not refuted;
+it is the leading untested hypothesis, and the near-equal deficits are weak evidence
+for it.** To test it, exclude reads that overhang the annotated transcript end and see
+whether the two metrics converge.
 
 | | 5′ 20% | middle 60% | 3′ 20% | 3′/5′ |
 |---|---|---|---|---|

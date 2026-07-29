@@ -1,0 +1,13 @@
+[21:13:43] prep: 10 libraries, arm=native, 5 at a time
+[21:19:03] prep: adapter-rate reproduction check against the saved TrimGalore reports
+  ZHA8833A1   TrimGalore 55.1%  ours 55.1%  diff 0.00 pt OK
+  ZHA8833A2   TrimGalore 59.7%  ours 59.7%  diff 0.00 pt OK
+  ZHA8833A3   TrimGalore 61.2%  ours 61.2%  diff 0.00 pt OK
+  ZHA8833A4   TrimGalore 62.4%  ours 62.4%  diff 0.00 pt OK
+  ZHA8833A5   TrimGalore 61.6%  ours 61.6%  diff 0.00 pt OK
+  ZHA8833A6   TrimGalore 61.2%  ours 61.2%  diff 0.00 pt OK
+  ZHA8833A7   TrimGalore 59.8%  ours 59.8%  diff 0.00 pt OK
+  ZHA8833A8   TrimGalore 67.3%  ours 67.3%  diff 0.00 pt OK
+  ZHA8833A9   TrimGalore 63.9%  ours 63.9%  diff 0.00 pt OK
+  ZHA8833A10  TrimGalore 63.3%  ours 63.3%  diff 0.00 pt OK
+[21:19:04] prep done: 10 fastqs

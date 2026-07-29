@@ -1,0 +1,106 @@
+[21:09:02] lut: measuring VASA's STAR-input read-length distribution
+
+==============================================================================
+WHAT IS BEING MEASURED
+==============================================================================
+target quantity : STAR-input read length (the fastq step 4 read)
+source files    : /nemo/lab/turnerj/working/guangxin/vasaseq/data/PM26037/out/cells/<cell>_cbc_trimmed_homoATCG.nonRibo.fastq.gz
+sample          : ZHA9292A1
+real cells (pooled into the LUT) : 002 003 004 005 006 007 008 009 010 011 012 013
+blanks (measured, NOT pooled)    : 001 014 015 016
+whole files, not a sample -- no stride bias in the target distribution
+
+==============================================================================
+PER-CELL STAR-INPUT READ LENGTHS
+==============================================================================
+real   002   n=2151344  mean=105.09  min=20  p1=21 p5=30 p10=51 p25=89 p50=124 p75=130 p90=130 p95=130 p99=130  max=130
+real   003   n=3419885  mean=105.66  min=20  p1=21 p5=27 p10=43 p25=89 p50=128 p75=130 p90=130 p95=130 p99=130  max=130
+real   004   n=2810200  mean=100.80  min=20  p1=21 p5=26 p10=34 p25=81 p50=119 p75=130 p90=130 p95=130 p99=130  max=130
+real   005   n=2415306  mean=105.13  min=20  p1=21 p5=30 p10=50 p25=89 p50=125 p75=130 p90=130 p95=130 p99=130  max=130
+real   006   n=3833067  mean=104.12  min=20  p1=21 p5=28 p10=48 p25=87 p50=123 p75=130 p90=130 p95=130 p99=130  max=130
+real   007   n=7173377  mean=107.84  min=20  p1=21 p5=28 p10=48 p25=94 p50=128 p75=130 p90=130 p95=130 p99=130  max=130
+real   008   n=4642536  mean=105.31  min=20  p1=22 p5=29 p10=47 p25=89 p50=127 p75=130 p90=130 p95=130 p99=130  max=130
+real   009   n=5559561  mean=107.61  min=20  p1=21 p5=28 p10=49 p25=93 p50=128 p75=130 p90=130 p95=130 p99=130  max=130
+real   010   n=10423567  mean=110.33  min=20  p1=22 p5=31 p10=56 p25=99 p50=129 p75=130 p90=130 p95=130 p99=130  max=130
+real   011   n=10568080  mean=110.53  min=20  p1=22 p5=31 p10=56 p25=99 p50=129 p75=130 p90=130 p95=130 p99=130  max=130
+real   012   n=8594948  mean=109.71  min=20  p1=22 p5=31 p10=54 p25=97 p50=129 p75=130 p90=130 p95=130 p99=130  max=130
+real   013   n=8162799  mean=108.95  min=20  p1=22 p5=30 p10=54 p25=96 p50=128 p75=130 p90=130 p95=130 p99=130  max=130
+blank  001   n=254728  mean=84.23  min=20  p1=20 p5=22 p10=25 p25=38 p50=89 p75=129 p90=130 p95=130 p99=130  max=130
+blank  014   n=316298  mean=69.54  min=20  p1=20 p5=22 p10=25 p25=32 p50=74 p75=93 p90=126 p95=130 p99=130  max=130
+blank  015   n=359645  mean=74.33  min=20  p1=20 p5=22 p10=25 p25=32 p50=81 p75=101 p90=130 p95=130 p99=130  max=130
+blank  016   n=169297  mean=65.56  min=20  p1=20 p5=22 p10=24 p25=29 p50=65 p75=91 p90=129 p95=130 p99=130  max=130
+
+==============================================================================
+POOLED TARGET DISTRIBUTION (12 real cells)
+==============================================================================
+n=69754670  mean=108.02  min=20  p1=21 p5=29 p10=50 p25=94 p50=128 p75=130 p90=130 p95=130 p99=130  max=130
+
+This is the distribution the vasalen arm reproduces. Note the SHORT
+TAIL: it is what lets a VASA read be CONTAINED in a sub-151 nt feature
+and satisfy jS:IN, and it is the reason a single fixed trim length
+would not be a control.
+
+fraction of the pooled distribution at or below each length:
+  <=  20 nt :     359118    0.51%
+  <=  25 nt :    2182039    3.13%
+  <=  30 nt :    3854101    5.53%
+  <=  40 nt :    5467492    7.84%
+  <=  50 nt :    7030361   10.08%
+  <=  60 nt :    8481600   12.16%
+  <=  70 nt :   10176806   14.59%
+  <=  80 nt :   12511098   17.94%
+  <=  90 nt :   16188042   23.21%
+  <= 100 nt :   20452434   29.32%
+  <= 110 nt :   24880613   35.67%
+  <= 120 nt :   28243276   40.49%
+  <= 130 nt :   69754670  100.00%
+  <= 140 nt :   69754670  100.00%
+  <= 151 nt :   69754670  100.00%
+
+==============================================================================
+BLANKS, FOR COMPARISON -- reported, deliberately excluded
+==============================================================================
+pooled blanks: n=1099968  mean=73.89  min=20  p1=20 p5=22 p10=25 p25=32 p50=78 p75=102 p90=130 p95=130 p99=130  max=130
+
+The blanks are shorter than the real cells (their STAR average
+mapped lengths are 51.6-78.3 nt against 108-115 for the real
+cells). Pooling them would drag the target distribution short for
+a reason that has nothing to do with the biology being compared,
+which is why they are out.
+
+==============================================================================
+ALIGNED SPAN (BED End-Start) -- the containment-relevant quantity
+==============================================================================
+This is NOT what the LUT is built from -- it cannot be set by a
+trimmer. It is measured here so that after the vasalen arm is mapped,
+how well the containment-relevant quantity actually matched can be
+checked rather than assumed. Stride 64 over the step-5 singlemapper BEDs.
+  002   n=18990  mean=1789.14  min=15  p1=24 p5=64 p10=89 p25=125 p50=130 p75=834 p90=2899 p95=5663 p99=24612  max=574165
+  003   n=38690  mean=1700.24  min=14  p1=24 p5=60 p10=86 p25=125 p50=130 p75=806 p90=2868 p95=5594 p99=25748  max=508898
+  004   n=25856  mean=1689.31  min=15  p1=22 p5=54 p10=81 p25=122 p50=130 p75=780 p90=2742 p95=5583 p99=25566  max=332880
+  005   n=22885  mean=1719.37  min=14  p1=24 p5=62 p10=85 p25=124 p50=130 p75=803 p90=2770 p95=5444 p99=23590  max=615014
+  006   n=35216  mean=1772.19  min=16  p1=23 p5=63 p10=87 p25=125 p50=130 p75=859 p90=2901 p95=5701 p99=24461  max=570864
+  007   n=80326  mean=1738.87  min=14  p1=25 p5=66 p10=91 p25=126 p50=130 p75=828 p90=2823 p95=5425 p99=23728  max=1917256
+  008   n=43567  mean=1762.49  min=15  p1=24 p5=59 p10=85 p25=123 p50=130 p75=769 p90=2721 p95=5363 p99=25828  max=524970
+  009   n=62336  mean=1762.59  min=14  p1=25 p5=66 p10=90 p25=126 p50=130 p75=849 p90=2864 p95=5513 p99=23377  max=965148
+  010   n=121550  mean=1643.22  min=14  p1=27 p5=69 p10=94 p25=126 p50=130 p75=813 p90=2825 p95=5516 p99=23664  max=590789
+  011   n=122983  mean=1654.28  min=14  p1=26 p5=70 p10=96 p25=127 p50=130 p75=808 p90=2815 p95=5498 p99=23588  max=738420
+  012   n=100127  mean=1733.00  min=15  p1=27 p5=66 p10=91 p25=126 p50=130 p75=813 p90=2797 p95=5475 p99=24482  max=1134645
+  013   n=84945  mean=1654.43  min=14  p1=25 p5=65 p10=91 p25=126 p50=130 p75=774 p90=2759 p95=5437 p99=23591  max=1093572
+
+pooled real cells: n=757471  mean=1701.41  min=14  p1=25 p5=66 p10=91 p25=126 p50=130 p75=813 p90=2815 p95=5493 p99=24023  max=1917256
+rows spanning >= 140 nt : 327565 (43.24%)
+
+==============================================================================
+LOOKUP TABLE
+==============================================================================
+10000 entries, min=20 max=130
+distinct lengths represented: 111 of 111 observed
+largest per-length probability error from the 10000-slot quantisation: 0.00005
+LUT percentiles: n=10000  mean=108.03  min=20  p1=21 p5=29 p10=50 p25=94 p50=128 p75=130 p90=130 p95=130 p99=130  max=130
+
+written: /nemo/lab/turnerj/working/guangxin/vasaseq/res/flashseq_vasa/vasa_starinput_len_lut.txt
+written: /nemo/lab/turnerj/working/guangxin/vasaseq/res/flashseq_vasa/vasa_starinput_len_lut.txt.hist.tsv
+
+report written: /nemo/lab/turnerj/working/guangxin/vasaseq/res/flashseq_vasa/vasa_readlen_report.txt
+[21:11:26] lut done: /nemo/lab/turnerj/working/guangxin/vasaseq/res/flashseq_vasa/vasa_starinput_len_lut.txt

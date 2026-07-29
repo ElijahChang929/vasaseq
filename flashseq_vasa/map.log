@@ -1,0 +1,72 @@
+[21:19:04] map: STAR over 10 libraries, 20 threads each, arm=native
+[21:19:09]   mapping 1/10  ZHA8833A1
+                                Number of input reads |	29179266
+                         Uniquely mapped reads number |	24858885
+              Number of reads mapped to multiple loci |	2998683
+                   % of reads mapped to multiple loci |	10.28%
+                  Number of reads unmapped: too short |	1147146
+                       % of reads unmapped: too short |	3.93%
+[21:22:14]   mapping 2/10  ZHA8833A2
+                                Number of input reads |	24401230
+                         Uniquely mapped reads number |	20569255
+              Number of reads mapped to multiple loci |	2858340
+                   % of reads mapped to multiple loci |	11.71%
+                  Number of reads unmapped: too short |	804932
+                       % of reads unmapped: too short |	3.30%
+[21:25:01]   mapping 3/10  ZHA8833A3
+                                Number of input reads |	24685557
+                         Uniquely mapped reads number |	20524581
+              Number of reads mapped to multiple loci |	3008787
+                   % of reads mapped to multiple loci |	12.19%
+                  Number of reads unmapped: too short |	967068
+                       % of reads unmapped: too short |	3.92%
+[21:27:36]   mapping 4/10  ZHA8833A4
+                                Number of input reads |	29987578
+                         Uniquely mapped reads number |	25254155
+              Number of reads mapped to multiple loci |	3682646
+                   % of reads mapped to multiple loci |	12.28%
+                  Number of reads unmapped: too short |	827239
+                       % of reads unmapped: too short |	2.76%
+[21:30:32]   mapping 5/10  ZHA8833A5
+                                Number of input reads |	28687141
+                         Uniquely mapped reads number |	23616860
+              Number of reads mapped to multiple loci |	3568212
+                   % of reads mapped to multiple loci |	12.44%
+                  Number of reads unmapped: too short |	1275557
+                       % of reads unmapped: too short |	4.45%
+[21:33:36]   mapping 6/10  ZHA8833A6
+                                Number of input reads |	23249296
+                         Uniquely mapped reads number |	19238478
+              Number of reads mapped to multiple loci |	2909734
+                   % of reads mapped to multiple loci |	12.52%
+                  Number of reads unmapped: too short |	918636
+                       % of reads unmapped: too short |	3.95%
+[21:36:09]   mapping 7/10  ZHA8833A7
+                                Number of input reads |	23617000
+                         Uniquely mapped reads number |	18787075
+              Number of reads mapped to multiple loci |	2771612
+                   % of reads mapped to multiple loci |	11.74%
+                  Number of reads unmapped: too short |	1901332
+                       % of reads unmapped: too short |	8.05%
+[21:38:48]   mapping 8/10  ZHA8833A8
+                                Number of input reads |	31803422
+                         Uniquely mapped reads number |	20506682
+              Number of reads mapped to multiple loci |	4027300
+                   % of reads mapped to multiple loci |	12.66%
+                  Number of reads unmapped: too short |	7062888
+                       % of reads unmapped: too short |	22.21%
+[21:42:10]   mapping 9/10  ZHA8833A9
+                                Number of input reads |	38682256
+                         Uniquely mapped reads number |	25546685
+              Number of reads mapped to multiple loci |	3844325
+                   % of reads mapped to multiple loci |	9.94%
+                  Number of reads unmapped: too short |	9059144
+                       % of reads unmapped: too short |	23.42%
+[21:47:08]   mapping 10/10  ZHA8833A10
+                                Number of input reads |	23127771
+                         Uniquely mapped reads number |	18492333
+              Number of reads mapped to multiple loci |	2687236
+                   % of reads mapped to multiple loci |	11.62%
+                  Number of reads unmapped: too short |	1772046
+                       % of reads unmapped: too short |	7.66%
+[21:50:04] map done: 10 BAMs

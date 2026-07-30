@@ -42,6 +42,12 @@ BC2CELL = f"{TABLES}/GSM5369495_bc2cellID_vasaplate.tsv.gz"
 RUNS = {
     "rrnav2": f"{FQDIR}/vasaplate_out_rrnav2",
     "bedv2": f"{FQDIR}/vasaplate_out_bedv2",
+    # run 5 (2026-07-29): identical to bedv2 EXCEPT the rRNA reference, which is
+    # unique_rRNA_human_mouse.v3.fa -- v2 with the single antisense entry
+    # (mouse_ENSMUSG00000106106_rRNA(-)) reverse-complemented. That entry is what
+    # produced the ~600x rRNA-biotype excess: 95,823 UFIs against 72 published.
+    # Same annotation BED as bedv2, so a bedv2-vs-v3 diff isolates the rRNA fix.
+    "v3": f"{FQDIR}/vasaplate_out_v3",
 }
 
 

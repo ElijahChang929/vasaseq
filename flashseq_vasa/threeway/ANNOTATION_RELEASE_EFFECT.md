@@ -143,22 +143,49 @@ releases, where an unchanged model must give an identical length:
 every gene model by 1 bp".** It is detected from the data, not assumed, and the
 detection is asserted in the analysis script.
 
-**With the convention corrected, gene models are largely stable:**
+**With the convention corrected, the aggregate looks stable — but the aggregate is
+misleading, and this is the one place in this track where the headline number hides
+the finding.** Across all 51,765 shared genes: **55.64%** have byte-identical
+summed exonic length, **71.83%** have an unchanged exon count, and the median
+log2(E116/E99) exonic ratio is **0.0**. Read alone, that says "nothing moved".
 
-- **55.64%** of shared genes have byte-identical summed exonic length;
-- **71.83%** have an unchanged exon count;
-- median log2(E116/E99) exonic length ratio = **0.0** — the typical shared gene
-  did not change size.
+Split by biotype, two very different regimes appear:
 
-**The short-biotype classes did not move at all.** Median exonic length is
-identical between releases for snoRNA (94 bp), snRNA (107 bp) and miRNA (102 bp).
+| biotype (shared genes) | n | median exonic E99 | median exonic E116 | median log2 ratio | % byte-identical |
+|---|---|---|---|---|---|
+| ProteinCoding | 21,734 | 3,532.5 bp | 4,744.0 bp | **+0.4253** | 24.43% |
+| lncRNA | 9,584 | 1,045.0 bp | 1,896.5 bp | **+0.8592** | 38.16% |
+| snoRNA | 1,065 | 129.0 bp | 129.0 bp | 0.0000 | **100.00%** |
+| snRNA | 789 | 107.0 bp | 107.0 bp | 0.0000 | **100.00%** |
+| scaRNA | 34 | 136.0 bp | 136.0 bp | 0.0000 | **100.00%** |
+| miRNA | 1,124 | 80.5 bp | 80.5 bp | 0.0000 | 99.91% |
+| MiscRna | 32 | 238.0 bp | 238.0 bp | 0.0000 | 96.88% |
+| rRNA | 13 | 119.0 bp | 119.0 bp | 0.0000 | 92.31% |
 
-**This matters for conventions trap 8.** VASA's `jS:IN` rule requires a read to be
-*contained* in a feature, so at 151 nt read length these classes are structurally
-near-invisible. Because their lengths are **unchanged between releases**, that
-suppression is a **constant** across the two plates: it cannot explain any
-plate-to-plate difference in short-RNA detection, and it is not a release effect.
-It remains a real confound for any short-RNA claim, just not this one.
+**The classes that carry the reads grew; the classes that carry the counts of
+short RNAs did not move at all.** A shared protein-coding gene's median exonic
+length rose by **34%** (2^0.4253 = 1.34) and a shared lncRNA's by **81%**
+(2^0.8592 = 1.81). The overall median of 0.0 is an artefact of the many thousands
+of short, frozen ncRNA genes outvoting them.
+
+**Two consequences, in opposite directions.**
+
+1. **Longer models capture more reads.** A gene whose annotated exonic footprint
+   grew by a third has more sequence on which a read can be contained, so part of
+   the own plate's protein-coding read count reflects a bigger target, not more
+   transcript. This is an *additional* release effect on composition beyond the
+   gene-universe effect quantified in §5 — and §5 does **not** capture it, because
+   §5 harmonises *which genes exist*, not *how large each one is*. The
+   composition-gap bracket in §5 is therefore, in this respect too, a **lower
+   bound**.
+2. **Trap 8 is a constant here, not a release effect.** VASA's `jS:IN` rule
+   requires a read to be contained in a feature, so at 151 nt the short classes
+   are structurally near-invisible: for shared genes, **96.62%** of snoRNA exon
+   features, **80.23%** of snRNA and **100.00%** of miRNA are shorter than 151 nt
+   — and those percentages are **identical to three decimal places in both
+   releases**. The suppression cannot explain any plate-to-plate difference in
+   short-RNA detection. It remains a real confound for any short-RNA claim; it is
+   just not a release confound.
 
 ---
 
@@ -291,7 +318,9 @@ anything reported above, not less.
 
 - Quoting **3.57-5.83 pp (35.8-58.5%)** as the annotation-release share of the
   published-vs-own biotype-composition gap, with the bracket, on ReadCounts,
-  coarse classes.
+  coarse classes — noting it is a **lower bound**, because it harmonises which
+  genes exist but not how large each one is (§4: shared protein-coding models grew
+  34%, lncRNA 81%).
 - Quoting **4.14-6.40 pp** as the upper limit on what protocol, biology and depth
   can jointly explain in that gap.
 - Comparing **protein-coding** biotype composition across releases with only mild
@@ -311,6 +340,11 @@ anything reported above, not less.
 - Treating the **5.83 pp** figure as diffuse: 27% of it is `Rn7sk` alone.
 - Reading anything here as an **rRNA** measurement (trap 9) or as covering the
   **GRCm38→GRCm39 assembly** change (not measured).
+- Comparing **per-gene expression** (not just composition) across the two plates
+  without per-gene length normalisation, or without restricting to the 24.43% of
+  shared protein-coding genes whose exonic length is byte-identical. A shared gene
+  is not the same measurement target in the two releases if its annotated footprint
+  grew by a third.
 
 ---
 

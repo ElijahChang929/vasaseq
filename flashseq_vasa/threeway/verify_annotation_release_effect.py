@@ -146,14 +146,47 @@ def main():
           71.827, 0.001)
     check("median log2 exonic ratio",
           hdr_val(H, "shared_genes_median_log2_exonic_ratio", "E116/E99"), 0.0, 1e-9)
-    # per-biotype: the short classes the jS:IN rule makes invisible
-    for bt, e99, e116 in (("snoRNA", 94.0, 94.0), ("snRNA", 107.0, 107.0),
-                          ("miRNA", 102.0, 102.0)):
-        row = P[P.biotype_E99 == bt]
-        if len(row):
-            r0 = row.iloc[0]
-            check(f"{bt} median exonic E99", r0.median_exonic_E99, e99, 0.5)
-            check(f"{bt} median exonic E116", r0.median_exonic_E116, e116, 0.5)
+    # Per-biotype. THIS BLOCK EXISTS BECAUSE THE FIRST VERSION OF THE NOTE GOT IT
+    # WRONG: it quoted the aggregate median log2 ratio of 0.0 as "gene models are
+    # largely stable", when in fact the classes carrying the reads grew
+    # substantially and only the short ncRNA classes are frozen. The aggregate is
+    # dominated by thousands of short ncRNA genes. Assert BOTH regimes so the
+    # note cannot drift back to the wrong conclusion.
+    PL = P.set_index("biotype_E99")
+    print("  -- classes that GREW --")
+    for bt, e99, e116, lr, unch in (
+            ("ProteinCoding", 3532.5, 4744.0, 0.4253, 24.43),
+            ("lncRNA", 1045.0, 1896.5, 0.8592, 38.16)):
+        r0 = PL.loc[bt]
+        check(f"{bt} median exonic E99", r0.median_exonic_E99, e99, 0.5)
+        check(f"{bt} median exonic E116", r0.median_exonic_E116, e116, 0.5)
+        check(f"{bt} median log2 exonic ratio", r0.median_log2_exonic_ratio, lr, 1e-4)
+        check(f"{bt} % byte-identical exonic", r0.pct_exonic_unchanged, unch, 0.01)
+    check("ProteinCoding exonic growth factor", round(2 ** 0.4253, 2), 1.34, 0.005)
+    check("lncRNA exonic growth factor", round(2 ** 0.8592, 2), 1.81, 0.005)
+
+    print("  -- classes that are FROZEN --")
+    for bt, med, unch in (("snoRNA", 129.0, 100.00), ("snRNA", 107.0, 100.00),
+                          ("scaRNA", 136.0, 100.00), ("miRNA", 80.5, 99.91),
+                          ("MiscRna", 238.0, 96.88), ("rRNA", 119.0, 92.31)):
+        r0 = PL.loc[bt]
+        check(f"{bt} median exonic E99", r0.median_exonic_E99, med, 0.01)
+        check(f"{bt} median exonic E116", r0.median_exonic_E116, med, 0.01)
+        check(f"{bt} median log2 exonic ratio", r0.median_log2_exonic_ratio, 0.0, 1e-9)
+        check(f"{bt} % byte-identical exonic", r0.pct_exonic_unchanged, unch, 0.01)
+
+    # trap 8: the containment exposure must be IDENTICAL in both releases for the
+    # short classes -- that identity is what makes the suppression a constant
+    # rather than a release effect.
+    FL = T("annotation_feature_length.tsv")
+    sh = FL[FL.gene_set == "shared_only"].set_index(["release", "biotype"])
+    for bt, want in (("snoRNA", 96.620), ("snRNA", 80.228), ("miRNA", 100.000)):
+        a = sh.loc[("E99", bt), "pct_exon_features_shorter_than_151"]
+        b = sh.loc[("E116", bt), "pct_exon_features_shorter_than_151"]
+        check(f"{bt} % exon features <151nt, E99", a, want, 1e-3)
+        check(f"{bt} % exon features <151nt, E116", b, want, 1e-3)
+        check(f"{bt} containment exposure identical across releases",
+              round(abs(a - b), 6), 0.0, 1e-6)
 
     print("== 7. composition gap, ID-only universe (upper bound) ==")
     check("raw TVD coarse",

@@ -145,4 +145,142 @@ name — a non-zero exit from a command nobody thinks of as fallible.
    "Submitted batch job" — the driver prints `STAGE N … : <jobid>` instead. The
    driver had actually succeeded.
 
-TO BE FILLED — run 5 results, and whether the two predicted movements occurred.
+### Run 5 completed
+
+| stage | job | outcome |
+|---|---|---|
+| 3 ribo | `51029413` | COMPLETED, 384/384 |
+| 4 gmap | `51029414` | COMPLETED, 384/384 |
+| 5a/5b | `51029415`/`51029416` | COMPLETED, 384/384 each |
+| 6 cout | `51029417` | COMPLETED, **8h48m** (runs 3–4: 8h54m, 8h39m) |
+| 7 pick | `51029418` | COMPLETED, **4h52m** (runs 3–4: 4h38m, 4h51m) |
+| comparison | `51039884` | COMPLETED, 2m25s |
+
+20 tables written; `mapStats.log` is **21 lines** = complete (trap 2).
+
+> Stage 6 writes its pickle to the **parent** directory with the run-directory
+> name as prefix (`vasaplate_out_v3.pickle.gz`, 257 MB; `…dict.pickle`, 1.92 GB),
+> not inside the run directory. Looking inside it and finding nothing is not a
+> failure — I made that mistake first.
+
+---
+
+## Both predictions: direction CONFIRMED, magnitudes differ and are explained
+
+### Prediction 1 — step-3 depletion UP
+
+| | reads | % of 181,287,059 |
+|---|---|---|
+| ribosomal, v2 (`rrnav2`) | 9,176,750 | **5.0620%** |
+| ribosomal, v3 (fixed) | 9,461,806 | **5.2192%** |
+| change | +285,056 | **+0.1572 pt** (predicted +0.28) |
+
+**The v2 baseline reproduces the documented figure exactly** — `5.0620% =
+9,176,750 / 181,287,059` against the README's 5.06%. That is itself evidence the
+accounting is right.
+
+**Direction is unambiguous: 382 of 384 cells rose, 0 fell, 2 unchanged** (those
+two have 1,555 and 3,523 reads).
+
+**Why the magnitude is half.** The shift scales with **rRNA content**, not depth:
+Spearman(pct_v2, shift) = **+0.939**, against −0.176 for depth. That is the right
+mechanism — v3 recovers reads aligning antisense to one 18S entry, so a cell with
+more rRNA has more of them.
+
+The 8-cell pilot that predicted +0.28 sampled **rRNA-rich** cells. The 121 cells
+whose shift lands inside the predicted 0.27–0.51 band have median v2-rRNA
+**11.16%**, against a plate median of **4.46%**. Taking the 200 cells at or above
+that rRNA level gives a read-weighted shift of **+0.354 pt** — reproducing the
+pilot. **So the pilot over-estimated by ~1.8× through sampling; +0.157 pt is the
+plate-wide truth.**
+
+### Prediction 2 — rRNA biotype share DOWN
+
+| | rRNA UFIs (384 cells) | share of all UFIs |
+|---|---|---|
+| published | 163 | 0.00030% |
+| v2 (run 4) | 95,873 | 0.18417% — **623× published** |
+| **v3 (run 5)** | **494** | **0.00095% — 3.2× published** |
+
+**194× fewer rRNA UFIs.** Predicted ~600× down; achieved 194×, because the fix
+addresses only one of the two compounding defects.
+
+**It was one locus, and only that locus moved.** From
+`rrna_per_locus_v2_v3.tsv` (60 loci):
+
+| | published | v2 | v3 |
+|---|---|---|---|
+| `ENSMUSG00000106106_CT010467.1_rRNA` | 72 | 95,823 | **444** (216× fewer) |
+| all 59 other rRNA loci, summed | 91 | 50 | **50** |
+
+**0 of the 59 other loci changed between v2 and v3.** A one-entry
+reverse-complement should move exactly one locus, and it did.
+
+**Why 444 and not 72.** The diagnosis named **two** compounding defects: (A)
+`riboread-selection.py` writes reverse-strand reads reverse-complemented, and (B)
+one reference entry stored antisense. **v3 fixes B only** — A is upstream code,
+left alone under Rule 1. So a residual is expected: A still flips reverse-strand
+reads, it just no longer has a backwards reference entry to compound with. 444
+UFIs over 384 cells is **1.2 per cell**, against 250 per cell before.
+
+Two ratios, not to be conflated: the **class share** is 3.2× published; the
+**locus count** is 6.2× (444/72).
+
+### A third movement, unpredicted and in the right direction
+
+**sncRNA share: 1.604% → 1.408%**, against published **1.421%** and the paper's
+stated 1.4%. The error against the deposited table fell from 0.183 pt to
+**0.013 pt — 14× closer.** Not predicted, and it follows mechanically: the
+mis-assigned reads were inflating a non-protein-coding class.
+
+### Nothing else moved
+
+| | v2 (run 4) | v3 (run 5) |
+|---|---|---|
+| per-gene Spearman r | 0.9732 | **0.9733** |
+| per-gene Pearson r (log10) | 0.9814 | **0.9814** |
+| median per-cell Pearson r | 0.9820 | **0.9824** |
+| median log2(ours/published) | 0.000 | **0.000** |
+| barcodes ≥ 7,500 UFIs | 353 | **353** |
+| doublet rate, Fig. 1d rule | 0.57% | **0.57%** |
+| shared simple gene rows | 72,760 | 72,753 |
+
+---
+
+## Scrutiny: two things that looked wrong, checked
+
+**`MtRrna` is 0.42× published — a deficit, not an excess.** Checked against run 4:
+bedv2 gives **0.43×**, v3 gives **0.44×**. **Pre-existing, not introduced by the
+fix.** Explained: the rRNA reference carries **4 mitochondrial rRNA entries**
+(12S/16S, human and mouse), so mito-rRNA reads are removed at stage 3 by design
+rather than surviving to be annotated `MtRrna`. Whatever the authors used
+evidently did not deplete them as thoroughly. Not a workflow fault; worth knowing
+before anyone quotes a mito-rRNA fraction from this pipeline.
+
+**`tRNA` is 0.15× published — unchanged from run 4** and already diagnosed as
+geometric (`jS:IN` containment vs 72 bp features against 70.8 bp reads), not
+annotational. The fix does not touch it and was not expected to.
+
+---
+
+## Verdict: the workflow is validated as a benchmark anchor
+
+Against the **deposited** table, on 72,753 shared genes:
+per-gene Spearman **0.9733**, per-cell Pearson **0.9824**, median log2 ratio
+**0.000**, barcode count **353 = 353**, sncRNA **1.408% vs 1.421%**.
+
+The one large discrepancy that remained after run 4 is closed: **rRNA from 623×
+to 3.2× of published.** The residual is understood and attributable to an
+upstream defect deliberately left unpatched.
+
+**Use `vasaplate_out_v3` as the published-plate anchor.** Do not use `bedv2` for
+anything rRNA-related.
+
+### Correction made during this analysis
+
+I first wrote "38 other rRNA loci" — that came from the union of a **top-12
+listing** in a job log, not from the full table. The correct count is **59**, and
+re-deriving it into a committed TSV strengthened the claim rather than weakening
+it: 0 of 59 changed, verified over all 60 loci. Every number in the figure now
+reads from `rrna_per_locus_v2_v3.tsv`, not from a log.
+

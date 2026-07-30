@@ -219,6 +219,39 @@ def select(pub_ufi_tsv, out_tsv):
     out.loc[sel, 'selected'] = True
     out.to_csv(out_tsv, sep='\t', index=False)
 
+    # --- cross-check against the ESTABLISHED call table --------------------
+    # res/threeway/threeway_published_cellcalls.tsv came out of an earlier stage
+    # of this project and is the table the rest of the writeup quotes (mESC
+    # n=173 by Fig.1d, n=141 by Methods). This function recomputes the calls
+    # from the UFI table independently. If the two disagree then one of them is
+    # wrong, and that has to surface HERE rather than be averaged silently into
+    # a coverage profile -- so the disagreement count is asserted to be zero.
+    est = os.path.join(os.path.dirname(os.path.abspath(out_tsv)),
+                       'threeway_published_cellcalls.tsv')
+    if os.path.exists(est):
+        ref = pd.read_csv(est, sep='\t', dtype={'unit': str})
+        ref['unit'] = ref.unit.astype(str).str.zfill(3)
+        j = out.merge(ref, left_on='cell', right_on='unit', how='inner')
+        assert len(j) == len(out), ('join lost barcodes', len(j), len(out))
+        d1 = int((j.class_fig1d != j.call_fig1d).sum())
+        d2 = int((j.class_methods != j.call_methods).sum())
+        print('cross-check vs %s (%d barcodes joined)'
+              % (os.path.basename(est), len(j)))
+        print('  established: fig1d mouse=%d  methods mouse=%d  both=%d'
+              % (int((ref.call_fig1d == 'mouse').sum()),
+                 int((ref.call_methods == 'mouse').sum()),
+                 int(((ref.call_fig1d == 'mouse')
+                      & (ref.call_methods == 'mouse')).sum())))
+        print('  recomputed here, disagreements: fig1d %d, methods %d' % (d1, d2))
+        assert d1 == 0 and d2 == 0, (
+            'species calls disagree with the established table: fig1d %d, '
+            'methods %d barcodes' % (d1, d2))
+        print('  AGREE exactly -- this selection rests on the same species '
+              'calls the rest of the writeup quotes')
+    else:
+        print('WARNING established call table absent at %s -- the selection is '
+              'NOT cross-checked' % est)
+
     n1 = int((out.class_fig1d == 'mouse').sum())
     n2 = int((out.class_methods == 'mouse').sum())
     print('published plate, %d barcodes' % len(out))
@@ -349,6 +382,9 @@ def geneset(own_tsv, fsnat_tsv, fsvas_tsv, pub_tsv, pubcells_tsv,
             gtf99, gtf116, out_prefix):
     import pandas as pd
 
+    # NOTE the published ReadCounts table passed in must be the SAME family
+    # (uniaggGenes vs raw total) as the UFI table `select` used, or the two
+    # stages disagree about which entries exist. See the driver's comment.
     cells = pd.read_csv(pubcells_tsv, sep='\t')
     pub_cols = list(cells.cell.astype(str).str.zfill(3)[cells.selected])
     assert len(pub_cols) == N_PUB_CELLS, pub_cols
@@ -372,6 +408,19 @@ def geneset(own_tsv, fsnat_tsv, fsvas_tsv, pub_tsv, pubcells_tsv,
         common = s if common is None else (common & s)
     print('expressed >= %d reads in ALL FOUR groups: %d genes'
           % (MIN_READS_EACH, len(common)))
+    # An empty or tiny gene set does not raise anywhere downstream: the models
+    # simply carry no exons, every BAM places 0 reads, and merge writes a table
+    # of zeros that looks like a result. Fail here instead. The floor is set far
+    # below any plausible value (the two-group upstream run reached MAX_GENES)
+    # so it catches a broken join, not a marginal dataset.
+    assert len(common) >= 500, (
+        'only %d genes expressed >= %d reads in all four groups -- check the '
+        'count tables are the same FAMILY and that species filtering left mouse '
+        'rows' % (len(common), MIN_READS_EACH))
+    for k, v in e.items():
+        assert len(v) > 5000, (
+            '%s yielded only %d mouse protein-coding genes -- wrong table or '
+            'wrong species filter' % (k, len(v)))
 
     # rank by the geometric mean of CPM, not of raw totals: the four groups
     # differ in depth by orders of magnitude, and a raw-total geometric mean
@@ -395,6 +444,9 @@ def geneset(own_tsv, fsnat_tsv, fsvas_tsv, pub_tsv, pubcells_tsv,
     print('genes modellable in BOTH releases: %d' % len(both))
     genes = both[:MAX_GENES]
     print('gene set used: %d (top by CPM geometric mean)' % len(genes))
+    assert len(genes) >= 500, (
+        'gene set is %d genes, too few to average a coverage profile over'
+        % len(genes))
 
     _write_models(genes, b99, out_prefix + '.E99.npz')
     _write_models(genes, b116, out_prefix + '.E116.npz')
@@ -805,6 +857,56 @@ def merge(covdir, res, geneset_prefix):
                                        'reads_placed', 'reads_fullexon']),
                     on='label', how='left')
     per.to_csv(os.path.join(res, 'coverage_threeway.tsv'), sep='\t', index=False)
+
+    # --- aligned read-length table: all groups on the record ---------------
+    # Two reasons this is a deliverable and not a footnote. (1) Read length is
+    # the INPUT to the edge-clipping hypothesis for the base-vs-mid
+    # disagreement, which is untested and remains so here. (2) It is the
+    # obvious confounder for any coverage-SHAPE claim: the published plate was
+    # mapped with a sjdbOverhang-73 index and the own plate with a 151 nt one,
+    # so a published-vs-own shape difference could be length, not chemistry.
+    # Percentiles are over the pooled per-unit histograms of ALL primary
+    # alignments STREAMED -- the whole BAM for the shallow published cells, the
+    # first MAX_READS-worth for the deep ones. reads_primary states which, and
+    # this is a different estimator from the per-unit mean of percentiles
+    # printed below; disagreement between them is itself informative.
+    alnrows = []
+    for _g in ['VASA_published', 'VASA_own', 'FLASHseq_native',
+               'FLASHseq_vasalen']:
+        sm = meta[meta.group == _g]
+        if not len(sm):
+            continue
+        h = None
+        for f in sorted(glob.glob(os.path.join(covdir, '*.lenhist.npz'))):
+            if os.path.basename(f)[:-len('.lenhist.npz')] in set(sm.label):
+                z = np.load(f)['all'].astype(np.int64)
+                h = z if h is None else h + z
+        assert h is not None and h.sum() > 0, _g
+        cs = np.cumsum(h)
+        LL = np.arange(len(h))
+        qs = {p: float(LL[np.searchsorted(cs, p * cs[-1] / 100.0)])
+              for p in (1, 5, 25, 50, 75, 95, 99)}
+        alnrows.append(dict(
+            group=_g, n_units=len(sm),
+            reads_primary=int(sm.reads_primary.sum()),
+            alignments_in_hist=int(cs[-1]),
+            p01=qs[1], p05=qs[5], p25=qs[25], p50=qs[50], p75=qs[75],
+            p95=qs[95], p99=qs[99],
+            mean=float((LL * h).sum() / cs[-1]),
+            frac_le_80nt=float(h[:81].sum() / cs[-1]),
+            frac_ge_140nt=float(h[140:].sum() / cs[-1])))
+    aln = pd.DataFrame(alnrows)
+    aln.to_csv(os.path.join(res, 'coverage_threeway_alnlen.tsv'),
+               sep='\t', index=False)
+    print('=== ALIGNED READ LENGTH, pooled over the units of each group ===')
+    print('  %-17s %3s %12s %5s %5s %5s %5s %7s %8s'
+          % ('group', 'n', 'alignments', 'p05', 'p25', 'p50', 'p75', 'mean',
+             '<=80nt'))
+    for _, r0 in aln.iterrows():
+        print('  %-17s %3d %12d %5.0f %5.0f %5.0f %5.0f %7.1f %7.1f%%'
+              % (r0.group, r0.n_units, r0.alignments_in_hist, r0.p05, r0.p25,
+                 r0.p50, r0.p75, r0['mean'], 100 * r0.frac_le_80nt))
+    print('  wrote coverage_threeway_alnlen.tsv')
 
     prof = df.groupby(['group', 'metric'])[bcols].mean().reset_index()
     prof.to_csv(os.path.join(res, 'coverage_threeway_profile.tsv'),

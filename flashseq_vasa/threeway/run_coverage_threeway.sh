@@ -41,17 +41,29 @@ echo "=================================================================="
 
 # ---------------------------------------------------------------- stage 1
 echo; echo "### STAGE 1  published-plate cell selection (species purity)"
+# The UFI table family matters and is not interchangeable. The established
+# call table (res/threeway/threeway_published_cellcalls.tsv, written by
+# threeway_paperform.call_published_cells) was computed from the uniaggGenes
+# family, where multi-gene combination entries are collapsed. Reading the raw
+# `total` family instead shifts the Methods rule's gene fractions and moves
+# barcodes 090/208/296 mixed->mouse and 245 discarded->human, giving 144 mouse
+# instead of 141. select() asserts agreement with the established table, so a
+# wrong path here fails the job in stage 1 rather than silently profiling a
+# different cell set.
 $PY "$SRC" select \
-    "$PUB/vasaplate_out_v3_total.UFICounts.tsv" \
+    "$PUB/vasaplate_out_v3_uniaggGenes_total.UFICounts.tsv" \
     "$RES/coverage_threeway_pubcells.tsv"
 
 # ---------------------------------------------------------------- stage 2
+# ReadCounts (Rule 4: reads are the only unit all three protocols share), and
+# the uniaggGenes family on every side -- the same family stage 1 called cells
+# from. See mk_coverage_threeway.geneset()'s note.
 echo; echo "### STAGE 2  gene set + transcript models for BOTH releases"
 $PY "$SRC" geneset \
-    "$OWN/ZHA9292A1_total.ReadCounts.tsv" \
-    "$FSN/FSall10_native_total.ReadCounts.tsv" \
-    "$FSV/FSall10_vasalen_total.ReadCounts.tsv" \
-    "$PUB/vasaplate_out_v3_total.ReadCounts.tsv" \
+    "$OWN/ZHA9292A1_uniaggGenes_total.ReadCounts.tsv" \
+    "$FSN/FSall10_native_uniaggGenes_total.ReadCounts.tsv" \
+    "$FSV/FSall10_vasalen_uniaggGenes_total.ReadCounts.tsv" \
+    "$PUB/vasaplate_out_v3_uniaggGenes_total.ReadCounts.tsv" \
     "$RES/coverage_threeway_pubcells.tsv" \
     "$GTF99" "$GTF116" \
     "$RES/coverage_threeway_geneset"

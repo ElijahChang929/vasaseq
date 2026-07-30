@@ -127,8 +127,22 @@ MAX_READS = 3_000_000
 
 # --- new here
 MIN_UFI = 7500       # vp_common.MIN_UFI, the paper's own cell gate
-N_PUB_CELLS = 8      # deepest mouse-pure published cells to profile
+# 12 deepest mouse-pure published cells. 12 rather than 8 for two reasons
+# measured in the precheck: the published plate's 384 barcodes share one library
+# so each cell is ~10x shallower than an own-plate cell, and the deepest BAMs by
+# FILE SIZE are human (HEK293T) cells -- one of them placed 111 reads out of 2.7M
+# primary. 12 also matches the own plate's 12 real cells, so the two VASA groups
+# carry the same n and the permutation test is symmetric.
+N_PUB_CELLS = 12
 ROBUST_MIN_TX_READS = 20   # per-transcript floor for the sensitivity check
+# Upper bound of the aligned-length regime all four datasets share. The
+# published plate's STAR index is sjdbOverhang 73, i.e. a ~75 nt library, and
+# its aligned reads measure ~73 nt; the own plate's are ~127 nt and FLASH-seq
+# native's ~150 nt. 80 nt is just above the published plate's own p75, so its
+# short-read profile is nearly all of its reads while the others contribute
+# only their genuinely short tail. Chosen from the measured distributions, not
+# picked to produce an answer.
+SHORT_MAX = 80
 
 BLANKS_OWN = {'001', '014', '015', '016'}   # confirmed blanks, own plate
 
@@ -424,9 +438,44 @@ def geneset(own_tsv, fsnat_tsv, fsvas_tsv, pub_tsv, pubcells_tsv,
 # ===========================================================================
 # 2. one BAM -> profiles + loss decomposition + read-length distribution
 # ===========================================================================
-def profile(models, bam_path, label, group, out_prefix):
+# Binning is `bin = min(nb-1, pos*nb//L)`, so bin j covers transcript positions
+# [ceil(j*L/nb), ceil((j+1)*L/nb) - 1], and the last bin absorbs the remainder.
+# These two invert that exactly, which is what lets a contiguous run of bases be
+# accumulated as a handful of per-bin counts instead of one vote per base. They
+# are asserted against the per-base definition in `_selfcheck_bins`.
+def _bin_start(j, nb, L):
+    return -(-j * L // nb)          # ceil(j*L/nb)
+
+
+def _bin_end(j, nb, L):
+    return (L - 1) if j == nb - 1 else (-(-(j + 1) * L // nb) - 1)
+
+
+def _selfcheck_bins(nb=NBINS):
+    """The vectorised binning must reproduce the per-base definition exactly."""
+    rng = np.random.default_rng(0)
+    for L in list(rng.integers(1000, 200000, 40)) + [1000, 1001, 99999]:
+        L = int(L)
+        want = np.minimum(nb - 1, np.arange(L) * nb // L)
+        for j in range(nb):
+            s, e = _bin_start(j, nb, L), _bin_end(j, nb, L)
+            got = np.where(want == j)[0]
+            assert len(got), (L, j)
+            assert (s, e) == (int(got[0]), int(got[-1])), (L, j, s, e, got[0], got[-1])
+    return True
+
+
+def profile(models, bam_path, label, group, out_prefix, perbase=False):
+    """Stream one BAM into the coverage profiles.
+
+    `perbase=True` selects the reference accumulation path (one np.add.at vote
+    per aligned base, as mk_gene_coverage.py does) instead of the fast run-based
+    one. It exists so the two can be compared on real data; the profiles must be
+    bit-identical, and the precheck asserts that.
+    """
     import pysam
 
+    assert _selfcheck_bins(), 'bin inversion self-check failed'
     m = np.load(models, allow_pickle=True)
     tx_len, tx_strand = m['tx_len'], m['tx_strand']
     nb = int(m['nbins'][0])
@@ -452,7 +501,8 @@ def profile(models, bam_path, label, group, out_prefix):
             tx_gmax[k] = e
 
     cov = {k: np.zeros((ntx, nb), dtype=np.float64)
-           for k in ('base', 'mid', 'mid_sense', 'base_fullexon', 'mid_fullexon')}
+           for k in ('base', 'mid', 'mid_sense', 'base_fullexon',
+                     'mid_fullexon', 'mid_short')}
     lost = dict(txend=0, txstart=0, internal=0, modelerr=0,
                 unclassified=0, placed=0)
     lenhist = np.zeros(1024, dtype=np.int64)         # all primary alignments
@@ -499,6 +549,7 @@ def profile(models, bam_path, label, group, out_prefix):
         rows = []          # (tx index, bin indices) for this read
         home = None        # the transcript this read belongs to, if any
         n_placed_bases = 0
+        merr_read = 0      # tripwire, expected 0 (see below)
         unplaced = []      # genomic intervals whose bases reached no bin
         for bs, be in blocks:
             g = bs
@@ -521,17 +572,29 @@ def profile(models, bam_path, label, group, out_prefix):
                 n = min(be, exon_end) - g
                 if home is None:
                     home = k
-                pos = (p0 + np.arange(n)) if tx_strand[k] > 0 else (p0 - np.arange(n))
-                ok = (pos >= 0) & (pos < L)
-                pos = pos[ok]
-                if len(pos):
-                    rows.append((k, np.minimum(nb - 1, pos * nb // L)))
-                    n_placed_bases += len(pos)
+                # bins are contiguous in transcript space over a run inside one
+                # exon, so the run's per-bin counts are a difference of bin
+                # indices at its two ends -- no per-base array needed. This is
+                # the hot loop: at ~127 nt/read x millions of reads, building an
+                # np.arange(n) per exon-run and calling np.add.at on it costs
+                # ~150x more than the two divisions below.
+                if tx_strand[k] > 0:
+                    a, b2 = p0, p0 + n - 1
+                else:
+                    a, b2 = p0 - n + 1, p0
+                lo, hi = max(a, 0), min(b2, L - 1)
                 # a base inside an exon whose transcript coordinate falls
-                # outside [0, L) would mean the model's offsets disagree with
-                # tx_len; build_models asserts they cannot, so this counter is
-                # a tripwire and is expected to stay 0
-                lost['modelerr'] += n - int(ok.sum())
+                # outside [0, L) would mean the model's exon offsets disagree
+                # with tx_len; _write_models asserts they cannot, so this
+                # counter is a tripwire and is expected to stay 0
+                merr_read += (lo - a) + (b2 - hi)
+                if hi < lo:
+                    g += n
+                    continue
+                b_lo = min(nb - 1, lo * nb // L)
+                b_hi = min(nb - 1, hi * nb // L)
+                rows.append((k, lo, hi, b_lo, b_hi, L))
+                n_placed_bases += hi - lo + 1
                 g += n
         if not rows:
             continue
@@ -562,15 +625,33 @@ def profile(models, bam_path, label, group, out_prefix):
             n_class += before + after + inside
         # every lost base must land in exactly one class; the residual is
         # written out so the decomposition is checkable rather than assumed
+        lost['modelerr'] += merr_read
+        n_class += merr_read
         lost['unclassified'] += n_lost - n_class
-        assert n_lost - n_class >= 0, (n_lost, n_class)
+        assert n_lost - n_class >= 0, (n_lost, n_class, merr_read)
 
         fullexon = (n_lost == 0)
         assert n_lost >= 0, (n_lost, aligned_bases, n_placed_bases)
-        for k, b in rows:
-            np.add.at(cov['base'][k], b, 1.0)
-            if fullexon:
-                np.add.at(cov['base_fullexon'][k], b, 1.0)
+        for k, lo, hi, b_lo, b_hi, L in rows:
+            targets = ((cov['base'][k], cov['base_fullexon'][k]) if fullexon
+                       else (cov['base'][k],))
+            if perbase:
+                # reference path: one vote per base, as mk_gene_coverage.py does.
+                # Kept so the fast path can be proved exactly equal on real data
+                # rather than only on the synthetic self-check.
+                bb = np.minimum(nb - 1, np.arange(lo, hi + 1) * nb // L)
+                for cm in targets:
+                    np.add.at(cm, bb, 1.0)
+                continue
+            for cm in targets:
+                if b_lo == b_hi:
+                    cm[b_lo] += hi - lo + 1
+                else:
+                    # first and last bins are partial; those between are whole
+                    cm[b_lo] += _bin_end(b_lo, nb, L) - lo + 1
+                    cm[b_hi] += hi - _bin_start(b_hi, nb, L) + 1
+                    for j in range(b_lo + 1, b_hi):
+                        cm[j] += _bin_end(j, nb, L) - _bin_start(j, nb, L) + 1
 
         mid = (blocks[0][0] + blocks[-1][1]) // 2
         i = find_exon(chrom, mid)
@@ -583,6 +664,15 @@ def profile(models, bam_path, label, group, out_prefix):
             sense = (tx_strand[k] > 0) != bool(r.is_reverse)
             if sense:
                 cov['mid_sense'][k, j] += 1.0
+            # read-length-matched control: the published plate was mapped from a
+            # ~75 nt library (STAR index sjdbOverhang 73) and its aligned reads
+            # are ~73 nt against the own plate's ~127 nt. A coverage-shape
+            # difference between the two VASA plates could therefore be read
+            # length rather than chemistry, so every unit also gets a profile
+            # restricted to its SHORT reads -- the length regime all four
+            # datasets have in common.
+            if qal <= SHORT_MAX:
+                cov['mid_short'][k, j] += 1.0
 
         lost['placed'] += aligned_bases
         n_binned += n_placed_bases
@@ -605,7 +695,8 @@ def profile(models, bam_path, label, group, out_prefix):
         fh.write('label\tgroup\tmetric\tn_tx\treads_placed\treads_seen\t'
                  'reads_primary\treads_fullexon\t'
                  + '\t'.join('b%02d' % i for i in range(nb)) + '\n')
-        for name in ('base', 'mid', 'mid_sense', 'base_fullexon', 'mid_fullexon'):
+        for name in ('base', 'mid', 'mid_sense', 'base_fullexon',
+                     'mid_fullexon', 'mid_short'):
             p, n_ok = norm(cov[name])
             fh.write('%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\n'
                      % (label, group, name, n_ok, placed, seen, primary,
@@ -795,6 +886,29 @@ def merge(covdir, res, geneset_prefix):
             return s.ratio.mean() if len(s) else np.nan
         print('  %-17s %9.3f %9.3f %9.3f %9.3f'
               % (g, r('mid'), r('base'), r('mid_fullexon'), r('base_fullexon')))
+
+    print('\n=== READ-LENGTH-MATCHED CONTROL (reads <= %d nt aligned) ===' % SHORT_MAX)
+    print('  The published plate is a ~75 nt library (its STAR index is')
+    print('  sjdbOverhang 73) and its aligned reads are ~73 nt against the own')
+    print("  plate's ~127 nt. So a published-vs-own difference in coverage shape")
+    print('  could be READ LENGTH rather than chemistry. This restricts every')
+    print('  unit to the length regime they share.')
+    print('  %-17s %9s %9s %9s %9s'
+          % ('group', "all 3'/5'", "<=%dnt" % SHORT_MAX, 'all rise', 'short rise'))
+    for g in groups:
+        a = per[(per.group == g) & (per.metric == 'mid')]
+        b = per[(per.group == g) & (per.metric == 'mid_short')]
+        print('  %-17s %9.3f %9.3f %9.3f %9.3f'
+              % (g, a.ratio.mean(), b.ratio.mean(), a.rise.mean(), b.rise.mean()))
+    pubs = per[(per.group == 'VASA_published') & (per.metric == 'mid_short')]
+    owns = per[(per.group == 'VASA_own') & (per.metric == 'mid_short')]
+    if len(pubs) and len(owns):
+        for stat in ('rise', 'ratio'):
+            p, tot, exact = _perm_p(pubs[stat].values, owns[stat].values)
+            print('  length-matched %s: published %.3f vs own %.3f, '
+                  'permutation p = %.4f (%s)'
+                  % (stat, pubs[stat].mean(), owns[stat].mean(), p,
+                     'exact' if exact else 'sampled'))
 
     print('\n=== stranded midpoint (VASA counted y, FLASH-seq n -- Rule 6) ===')
     for g in groups:

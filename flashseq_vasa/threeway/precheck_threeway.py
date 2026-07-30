@@ -271,22 +271,165 @@ def main(src, report):
     say('  loss decomposition sums exactly on every BAM: %s'
         % ('yes' if bad == 0 else 'NO -- see FAILs above'))
 
+    # ---------------------------------------------- equivalence, two questions
+    bc = ['b%02d' % i for i in range(M.NBINS)]
+    say(); say('-' * 74)
+    say('6a. FAST PATH vs PER-BASE PATH, inside this script')
+    say('    The fork accumulates whole runs from inverted bin boundaries where')
+    say('    mk_gene_coverage.py votes once per aligned base. Same reads, same')
+    say('    models, same everything -- only the accumulation differs, so the')
+    say('    profiles MUST be bit-identical. This is the check that the speedup')
+    say('    is a speedup and not a change of measurement.')
+    say('-' * 74)
+    for lab, p, want in [b for b in bams if b[0] in
+                         ('VASAown_010', 'FSnative_A9', 'VASApub_probe')]:
+        ref = os.path.join(tmp, 'REF_' + lab)
+        M.profile(m99 if want == 'E99' else m116, p, lab, 'probe', ref,
+                  perbase=True)
+        a = pd.read_csv(os.path.join(tmp, lab) + '.cov.tsv', sep='\t')
+        b = pd.read_csv(ref + '.cov.tsv', sep='\t')
+        worst = 0.0
+        for metric in sorted(set(a.metric)):
+            va = a[a.metric == metric][bc].values.ravel().astype(float)
+            vb = b[b.metric == metric][bc].values.ravel().astype(float)
+            worst = max(worst, float(np.abs(va - vb).max()))
+        ok = worst < 1e-12
+        say('  %-16s max |fast - perbase| over ALL metrics = %.3g   %s'
+            % (lab, worst, 'IDENTICAL' if ok else 'DIFFERS -- BUG'))
+        bad += (not ok)
+
+    say(); say('-' * 74)
+    say('6b. THIS FORK vs mk_gene_coverage.py -- EXPECTED to differ, and why')
+    say('    Not a regression: the fork changes one thing about placement on')
+    say('    purpose. Upstream does ONE exon lookup per aligned block and takes')
+    say('    the rest of the block as contiguous in transcript space. That holds')
+    say('    for a spliced read (STAR splits blocks at junctions) but NOT for an')
+    say('    unspliced read that runs off the end of an exon into an intron --')
+    say('    upstream credits those intronic bases to transcript positions that')
+    say('    continue past the exon. The fork walks each block exon by exon and')
+    say('    counts intronic bases as lost instead. VASA is a total-RNA protocol')
+    say('    with ~44% unspliced reads, so this is not a corner case.')
+    say('    The difference is therefore reported and quantified, not asserted')
+    say('    away. `mid` also moves, because a read that upstream places and the')
+    say('    fork does not (or vice versa) shifts which reads reach the cap.')
+    say('-' * 74)
+    up_src = os.path.join(W, 'res', 'flashseq_vasa', 'mk_gene_coverage.py')
+    if not os.path.exists(up_src):
+        say('  SKIP upstream script not found at %s' % up_src)
+    else:
+        spec_u = importlib.util.spec_from_file_location('mkup', up_src)
+        U = importlib.util.module_from_spec(spec_u)
+        spec_u.loader.exec_module(U)
+        U.MAX_READS = PRECHECK_READS
+        for lab, p, want in [b for b in bams if b[0] in
+                             ('VASAown_010', 'FSnative_A9')]:
+            up_pfx = os.path.join(tmp, 'UP_' + lab)
+            U.profile(m116, p, lab, up_pfx + '.cov.tsv')
+            a = pd.read_csv(os.path.join(tmp, lab) + '.cov.tsv', sep='\t')
+            b = pd.read_csv(up_pfx + '.cov.tsv', sep='\t')
+            for metric in ('base', 'mid'):
+                va = a[a.metric == metric][bc].values.ravel().astype(float)
+                vb = b[b.metric == metric][bc].values.ravel().astype(float)
+                sa, sb = M._stats(va), M._stats(vb)
+                say("  %-14s %-5s 3'/5' fork %.4f vs upstream %.4f "
+                    '(max bin diff %.2g)'
+                    % (lab, metric, sa['ratio'], sb['ratio'],
+                       float(np.abs(va - vb).max())))
+            am = pd.read_csv(os.path.join(tmp, lab) + '.meta.tsv', sep='\t')
+            say('       fork: %d placed, %.2f%% of aligned bases binned, '
+                '%.2f%% intronic'
+                % (am.reads_placed[0], 100 * am.bases_binned[0] / am.bases_aligned[0],
+                   100 * am.lost_internal[0] / am.bases_aligned[0]))
+        say('  VERDICT ON 6b: a difference here is expected. What matters is that')
+        say("  the DIRECTION of every claim survives -- merge's REGRESSION")
+        say('  section checks that on the real run.')
+
+    # -------------------------------------------------- where the time goes
+    say(); say('-' * 74)
+    say('7. WHERE THE TIME GOES  (the projection below is ~26 h, so this matters)')
+    say('   Three candidates: BAM decode, the per-read placement work, and the')
+    say('   fact that only a few % of reads land in a 60-gene set so most of the')
+    say('   stream is decoded and thrown away. Measured, not guessed.')
+    say('-' * 74)
+    eqp = [b for b in bams if b[0] == 'VASAown_010'][0][1]
+    N = 200000
+    t0 = time.time()
+    b0 = pysam.AlignmentFile(eqp, check_sq=False)
+    n = 0
+    for r in b0.fetch(until_eof=True):
+        n += 1
+        if n >= N:
+            break
+    b0.close()
+    t_iter = time.time() - t0
+    say('  decode only, %d records            : %5.1f s (%.2f us/record)'
+        % (N, t_iter, 1e6 * t_iter / N))
+    t0 = time.time()
+    b0 = pysam.AlignmentFile(eqp, check_sq=False)
+    n = nb2 = 0
+    for r in b0.fetch(until_eof=True):
+        n += 1
+        if r.is_unmapped or r.is_secondary or r.is_supplementary:
+            continue
+        _ = r.get_blocks()
+        _ = r.query_alignment_length
+        nb2 += 1
+        if n >= N:
+            break
+    b0.close()
+    t_blocks = time.time() - t0
+    say('  + get_blocks + query_alignment_length: %5.1f s (%.2f us/record)'
+        % (t_blocks, 1e6 * t_blocks / N))
+    say('  so decode+blocks alone costs %.1f s per 200k records, i.e. %.2f h'
+        % (t_blocks, t_blocks * 20e6 / N / 3600))
+    say('  for a 20M-record BAM EVEN IF placement were free.')
+    say('  fraction of primary records that are primary: %.1f%%' % (100 * nb2 / n))
+    say('  IMPLICATION: the cap is on PLACED reads, and with a %d-gene model'
+        % PRECHECK_GENES)
+    say('  only a few %% of reads place, so the real 4000-gene run places a much')
+    say('  larger fraction per record decoded and will NOT scale as 150x this.')
+
     # ------------------------------------------------------- projection
     say(); say('-' * 74)
-    say('6. SIZING THE REAL JOB')
+    say('8. SIZING THE REAL JOB')
     say('-' * 74)
     say('  peak RSS in this precheck: %.2f GB' % rss_gb())
-    per = np.mean([times[k] for k in times]) if times else 0
-    scale = M.__dict__.get('MAX_READS_REAL', 3_000_000) / PRECHECK_READS
-    say('  mean %.1f s per BAM at %d reads' % (per, PRECHECK_READS))
-    say('  the real run caps at 3,000,000 placed reads per BAM (%.0fx), over 18'
-        % (3_000_000 / PRECHECK_READS))
-    say('  BAMs. Published cells are ~10x shallower and will not reach the cap,')
-    say('  so they cost less than the linear projection.')
-    say('  linear projection, deep BAMs: %.1f h for 18 BAMs'
-        % (18 * per * (3_000_000 / PRECHECK_READS) / 3600))
+    say('  The naive "150x the 20k-read precheck" projection is WRONG, because')
+    say('  the cap counts PLACED reads and the precheck used a %d-gene model.'
+        % PRECHECK_GENES)
+    say('  The right projection is per RECORD DECODED, which is what the BAM size')
+    say('  fixes, and the real 4000-gene model only raises the placed fraction.')
+    say('  So: cost per BAM ~= (records in BAM) x (us/record), capped when')
+    say('  3,000,000 reads have placed.')
+    us = 1e6 * t_blocks / N
+    say('  measured %.2f us/record (decode + blocks + length)' % us)
+    say('  %-34s %12s %10s' % ('unit', 'records', 'est. h'))
+    est_tot = 0.0
+    for lab, p, want in bams:
+        if not os.path.exists(p):
+            continue
+        mt = pd.read_csv(os.path.join(tmp, lab) + '.meta.tsv', sep='\t')
+        # total records is unknown without a full pass; estimate from file size
+        # and the bytes-per-record implied by this precheck's partial read
+        recs = mt.reads_seen[0]
+        say('  %-34s %12d %10s' % (lab + ' (precheck portion)', recs, '-'))
+    say('  A full own-plate BAM is ~1.4 GB and ~20M records: %.2f h at this rate'
+        % (20e6 * us / 1e6 / 3600))
+    say('  A full FLASH-seq BAM is ~3.2 GB: %.2f h' % (45e6 * us / 1e6 / 3600))
+    say('  Published cells are ~0.2 GB and ~3M records: %.2f h each'
+        % (3e6 * us / 1e6 / 3600))
+    say('  WORST CASE (no BAM reaches the cap early): 6 own + 8 FS + 12 pub')
+    est = (6 * 20e6 + 8 * 45e6 + 12 * 3e6) * us / 1e6 / 3600
+    say('    = %.1f core-hours if run serially.' % est)
+    say('  DECISION: run the units in PARALLEL, one process per BAM. They share')
+    say('  nothing but the read-only model file, so this is embarrassingly')
+    say('  parallel; %d cores brings it to ~%.1f h wall.'
+        % (16, est / 16 * 2))
     say('  plus one full pass of each GTF: %.0f s' % (t99 + t116))
     say('  plus one full pass of the 588k x 384 UFI table (chunked) for stage 1.')
+    say('  MaxMemPerCPU=28000 on nemo, and peak RSS here is %.2f GB, so memory'
+        % rss_gb())
+    say('  is not the binding constraint at any core count.')
 
     say(); say('=' * 74)
     say('VERDICT: %s' % ('PASS -- nothing found that would break the real run'

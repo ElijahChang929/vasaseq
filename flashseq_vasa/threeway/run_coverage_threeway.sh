@@ -61,8 +61,31 @@ M116=$RES/coverage_threeway_geneset.E116.npz
 test -s "$M99" && test -s "$M116"
 
 # ---------------------------------------------------------------- stage 3
-# published plate: the cells stage 1 selected, against the E99 models
-echo; echo "### STAGE 3a  published VASA plate (E99/GRCm38 models)"
+# One process per BAM. The units share nothing but the read-only .npz model
+# file, so this is embarrassingly parallel; the precheck measured the serial
+# cost at ~100 core-hours, which is not acceptable as wall time.
+#
+# `wait` alone returns 0 whatever the children did, so every pid is captured and
+# waited on individually -- otherwise a failed unit would leave a silently
+# incomplete merge.
+NPROC=${SLURM_CPUS_PER_TASK:-8}
+echo; echo "### STAGE 3  per-unit profiles, $NPROC at a time"
+
+WORK=$COV/logs
+mkdir -p "$WORK"
+declare -a PIDS=() NAMES=()
+
+launch () {   # launch <models> <bam> <label> <group>
+  local M=$1 B=$2 LAB=$3 GRP=$4
+  test -s "$B" || { echo "MISSING $B"; exit 1; }
+  while [ "$(jobs -rp | wc -l)" -ge "$NPROC" ]; do sleep 5; done
+  $PY "$SRC" profile "$M" "$B" "$LAB" "$GRP" "$COV/$LAB" \
+      > "$WORK/$LAB.log" 2>&1 &
+  PIDS+=($!); NAMES+=("$LAB")
+  echo "  launched $LAB (pid ${PIDS[-1]})"
+}
+
+# published plate: the mouse-pure cells stage 1 selected, against E99 models
 PUBCELLS=$($PY - "$RES/coverage_threeway_pubcells.tsv" <<'PY'
 import sys, csv
 with open(sys.argv[1]) as fh:
@@ -70,37 +93,52 @@ with open(sys.argv[1]) as fh:
                    if r['selected'] == 'True'))
 PY
 )
-echo "cells: $PUBCELLS"
+echo "published mouse-pure cells: $PUBCELLS"
 for CELL in $PUBCELLS; do
-  B=$PUB/vasaplate_out_v3/SRR14783059_${CELL}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam
-  test -s "$B" || { echo "MISSING $B"; exit 1; }
-  $PY "$SRC" profile "$M99" "$B" "VASApub_$CELL" VASA_published \
-      "$COV/VASApub_$CELL"
+  launch "$M99" \
+    "$PUB/vasaplate_out_v3/SRR14783059_${CELL}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam" \
+    "VASApub_$CELL" VASA_published
 done
 
-# own plate: the 6 deepest real cells, matching the upstream script's selection
-echo; echo "### STAGE 3b  own VASA plate (E116/GRCm39 models)"
+# own plate: the 6 deepest real cells -- the same six the upstream script used,
+# so the own-plate number here is comparable to the already-reported one
 for CELL in 007 009 010 011 012 013; do
-  B=$OWN/cells/ZHA9292A1_${CELL}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam
-  test -s "$B" || { echo "MISSING $B"; exit 1; }
-  $PY "$SRC" profile "$M116" "$B" "VASAown_$CELL" VASA_own \
-      "$COV/VASAown_$CELL"
+  launch "$M116" \
+    "$OWN/cells/ZHA9292A1_${CELL}_cbc_trimmed_homoATCG.nonRibo_E99_Aligned.out.bam" \
+    "VASAown_$CELL" VASA_own
 done
 
-# FLASH-seq: same four libraries the upstream script used, both arms
-echo; echo "### STAGE 3c  FLASH-seq, both arms (E116/GRCm39 models)"
+# FLASH-seq: the same four libraries upstream used, both arms.
+# A8 is excluded by the user's qc_verdict (18.3% human CALB1) and is not among
+# them; A7 (caveat, 3.6% CALB1) is likewise absent. Neither is silently dropped
+# -- the selection matches upstream's so the regression check is meaningful.
 for LIB in A1 A5 A9 A10; do
   for ARM in native vasalen; do
-    D=$SCR/flashseq_vasa/$ARM
-    B=$D/cells/ZHA8833${LIB}_cbc_noumi_E99_Aligned.out.bam
-    test -s "$B" || { echo "MISSING $B"; exit 1; }
-    $PY "$SRC" profile "$M116" "$B" "FS${ARM}_ZHA8833$LIB" \
-        "FLASHseq_${ARM}" "$COV/FS${ARM}_ZHA8833$LIB"
+    launch "$M116" \
+      "$SCR/flashseq_vasa/$ARM/cells/ZHA8833${LIB}_cbc_noumi_E99_Aligned.out.bam" \
+      "FS${ARM}_ZHA8833$LIB" "FLASHseq_${ARM}"
   done
 done
 
+echo "waiting on ${#PIDS[@]} units"
+FAILED=0
+for i in "${!PIDS[@]}"; do
+  if wait "${PIDS[$i]}"; then
+    echo "  OK   ${NAMES[$i]}"
+  else
+    echo "  FAIL ${NAMES[$i]} -- last 20 lines:"
+    tail -20 "$WORK/${NAMES[$i]}.log" | sed 's/^/       /'
+    FAILED=$((FAILED+1))
+  fi
+done
+test "$FAILED" -eq 0 || { echo "$FAILED unit(s) failed; refusing to merge a partial set"; exit 1; }
+
 NCOV=$(find "$COV" -name '*.cov.tsv' | wc -l)
-echo; echo "per-unit profiles written: $NCOV"
+echo "per-unit profiles written: $NCOV of ${#PIDS[@]}"
+test "$NCOV" -eq "${#PIDS[@]}" || { echo "count mismatch"; exit 1; }
+
+echo "--- per-unit summary lines"
+for N in "${NAMES[@]}"; do grep -h 'placed of' "$WORK/$N.log" || true; done
 
 # ---------------------------------------------------------------- stage 4
 echo; echo "### STAGE 4  merge, statistics, regression check"

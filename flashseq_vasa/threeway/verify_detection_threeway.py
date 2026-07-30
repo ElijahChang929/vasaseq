@@ -166,6 +166,27 @@ chk("30 pg is the LOWEST track at every rung where the three-way pairs are compa
     bool((piv.loc[piv[REF].dropna().index, P30]
           < piv.loc[piv[REF].dropna().index, REF]).all()), True)
 
+print("\n=== full ordering of ALL five tracks (not just the three-way pairs) ===")
+# Review caught "own > FLASH-seq > published" in the commit message and in two
+# figure titles. It is false: the FLASH-seq 30 pg rung sits BELOW the published
+# plate at every rung, so "FLASH-seq" is not a single band that outranks the
+# published plate. The full ordering is asserted here so no summary can restate
+# the collapsed version.
+FIVE = [t for t in set(tk.track) if "Methods rule" not in t]
+pv5 = tk[tk.track.isin(FIVE)].pivot_table(index="depth", columns="track",
+                                          values="median_genes")
+rungs = pv5[REF].dropna().index          # rungs where all three datasets compare
+sub = pv5.loc[rungs]
+EXPECTED = ["VASA own plate", "FLASH-seq VASA-trimmed", "FLASH-seq native",
+            REF, P30]
+for d in rungs:
+    chk("ordering @ %s" % format(int(d), ","),
+        list(sub.loc[d].sort_values(ascending=False).index), EXPECTED)
+chk("the published plate is NOT the lowest track -- 30 pg is below it everywhere",
+    sorted(set(sub.idxmin(axis=1))), [P30])
+chk("'own > FLASH-seq > published' is FALSE as stated (30 pg is a FLASH-seq arm "
+    "below published)", bool((sub[P30] < sub[REF]).all()), True)
+
 print("\n=== convergence / separation ===")
 chk("three-way spread @ 10k (genes)",
     float(conv[conv.depth == 10000].spread_genes.iloc[0]), 521.6, tol=0.05)
@@ -175,7 +196,10 @@ chk("spread grows monotonically over 10k-500k",
     bool((conv.sort_values("depth").spread_genes.diff().dropna() > 0).all()), True)
 chk("own plate is highest at every supported rung",
     sorted(set(conv.highest)), ["VASA own plate"])
-chk("published is lowest at every supported rung",
+# NB scoped to the THREE tracks in the convergence table (one per dataset,
+# FLASH-seq represented by its VASA-trimmed arm). Across all five tracks the
+# lowest is the 30 pg rung, not the published plate -- see the ordering block.
+chk("published is lowest OF THE THREE compared datasets at every supported rung",
     sorted(set(conv.lowest)), ["VASA published (mouse cells)"])
 
 print("\n=== annotation-release effect on the headline ===")
@@ -206,9 +230,19 @@ print("\n=== does the published plate's cell rule change the answer? ===")
 MR = "VASA published (mouse cells, Methods rule)"
 both = tk[tk.track.isin([REF, MR])].pivot_table(
     index="depth", columns="track", values="median_genes").dropna()
-chk("both cell rules supported at the same rungs", len(both) >= 1, True)
-chk("largest median difference between the two rules (genes)",
-    round(float((both[REF] - both[MR]).abs().max()), 1), 16.6, tol=0.05)
+chk("both cell rules supported at the same 6 rungs", len(both), 6)
+chk("Fig.1d minus Methods at 10k (genes)",
+    round(float(both.loc[10000, REF] - both.loc[10000, MR]), 1), 16.6, tol=0.05)
+chk("largest median difference between the two rules, any rung (genes)",
+    round(float((both[REF] - both[MR]).abs().max()), 1), 94.0, tol=0.05)
+chk("that maximum falls at 500k, the most depth-selected rung",
+    int((both[REF] - both[MR]).abs().idxmax()), 500000)
+chk("the Fig.1d rule reads HIGHER at every rung (its 29 extra cells are not "
+    "systematically worse)", bool((both[REF] - both[MR] > 0).all()), True)
+# the point of the sensitivity check: is the rule choice small against the gap?
+gap500 = round(float(piv.loc[500000, "VASA own plate"] - piv.loc[500000, REF]), 1)
+chk("rule effect at 500k as %% of the own-vs-published gap there",
+    round(100 * 94.0 / gap500, 1), 3.3, tol=0.15)
 chk("own plate still leads the published plate under the Methods rule at every rung",
     bool((piv.loc[both.index, "VASA own plate"] > both[MR]).all()), True)
 

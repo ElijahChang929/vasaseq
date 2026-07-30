@@ -112,25 +112,25 @@ GROUPS = {
         raw=f'{W}/data/ref/fastq_vasaplate/vasaplate_out_v3_total.ReadCounts.tsv',
         ufi=f'{W}/data/ref/fastq_vasaplate/vasaplate_out_v3_uniaggGenes_total.UFICounts.tsv',
         protocol='vasa', genome='GRCm38+GRCh38', annotation='Ensembl 99',
-        mixed_species=True, drop_blanks=False),
+        mixed_species=True, drop_blanks=False, unit_style='srr_well'),
     'own VASA-plate': dict(
         uniagg=f'{W}/data/PM26037/out/ZHA9292A1_uniaggGenes_total.ReadCounts.tsv',
         raw=f'{W}/data/PM26037/out/ZHA9292A1_total.ReadCounts.tsv',
         ufi=None,
         protocol='vasa', genome='GRCm39', annotation='Ensembl 116',
-        mixed_species=False, drop_blanks=True),
+        mixed_species=False, drop_blanks=True, unit_style='well'),
     'FLASH-seq native': dict(
         uniagg=f'{FSDIR}/native/FSall10_native_uniaggGenes_total.ReadCounts.tsv',
         raw=f'{FSDIR}/native/FSall10_native_total.ReadCounts.tsv',
         ufi=None,
         protocol='smartseq_noUMI', genome='GRCm39', annotation='Ensembl 116',
-        mixed_species=False, drop_blanks=False),
+        mixed_species=False, drop_blanks=False, unit_style='library'),
     'FLASH-seq vasalen': dict(
         uniagg=f'{FSDIR}/vasalen/FSall10_vasalen_uniaggGenes_total.ReadCounts.tsv',
         raw=f'{FSDIR}/vasalen/FSall10_vasalen_total.ReadCounts.tsv',
         ufi=None,
         protocol='smartseq_noUMI', genome='GRCm39', annotation='Ensembl 116',
-        mixed_species=False, drop_blanks=False),
+        mixed_species=False, drop_blanks=False, unit_style='library'),
 }
 
 # Rule 4: ReadCounts on every side. VASA's TranscriptCounts is the better quantity
@@ -293,10 +293,25 @@ def header_of(path):
         return fh.readline().rstrip('\n').split('\t')
 
 
-def unit_labels(cols, drop_blanks):
-    """Column labels -> bare unit ids, exactly as paperfig_compare.load() does."""
+def unit_labels(cols, g):
+    """Column labels -> bare unit ids.
+
+    Three different header conventions have to land on the same key space as
+    trimmed_reads(), or the Fig 1f x-axis silently goes missing:
+
+      published  'vasaplate_out_v3/SRR14783059_001'  -> '001'
+      own        '001'                                -> '001'
+      FLASH-seq  'cells/ZHA8833A1'                    -> 'ZHA8833A1'
+
+    The published rule is vp_common.normalise_columns()'s (rsplit on '_', then
+    zfill(3)); the own-plate rule is paperfig_compare.load()'s (zfill(3)). Getting
+    this wrong is not loud -- it just makes every trimmed_reads() lookup return
+    NaN and empties the saturation panel -- so unit_style is explicit per group
+    and asserted against the trimmed-read keys in the precheck."""
     out = [str(cc).split('/')[-1] for cc in cols]
-    if drop_blanks:
+    if g['unit_style'] == 'srr_well':
+        out = [u.rsplit('_', 1)[-1].zfill(3) for u in out]
+    elif g['unit_style'] == 'well':
         out = [u.zfill(3) for u in out]
     return out
 
@@ -373,7 +388,7 @@ def precheck(outdir):
             assert os.path.exists(p), f'{name} {fam}: missing {p}'
             mb = os.path.getsize(p) / 1e6
             cols = header_of(p)[1:]
-            units = unit_labels(cols, g['drop_blanks'])
+            units = unit_labels(cols, g)
             if g['drop_blanks']:
                 units = [u for u in units if u not in BLANKS]
             idx, X = next(read_chunks(p, cols))
@@ -395,6 +410,35 @@ def precheck(outdir):
         have = sum(1 for u in tr.get(name, {}) if tr[name][u] > 0)
         say('%-22s trimmed-read counts available for %d units' % (name, have))
     assert len(tr['published VASA-plate']) == 384, len(tr['published VASA-plate'])
+
+    # THE SILENT FAILURE THIS GUARDS. Three groups use three different header
+    # conventions; if unit_labels() and trimmed_reads() disagree on the key space
+    # the join returns NaN for every unit, the Fig 1f depth gate excludes
+    # everything, and the panel comes out EMPTY rather than wrong. Assert the
+    # join, do not trust it.
+    say('')
+    say('unit-key join, count-table columns vs trimmed-read logs:')
+    for name, g in GROUPS.items():
+        cols = header_of(g['uniagg'])[1:]
+        units = [u for u in unit_labels(cols, g)
+                 if not (g['drop_blanks'] and u in BLANKS)]
+        keys = set(tr[name])
+        matched = [u for u in units if u in keys]
+        say('  %-22s %3d units, %3d matched a trimmed-read log  (e.g. %s -> %s)'
+            % (name, len(units), len(matched), str(cols[0])[:40], units[0]))
+        assert len(matched) == len(units), (
+            f'{name}: only {len(matched)}/{len(units)} units join to a '
+            f'trimmed-read log. units={units[:4]} keys={sorted(keys)[:4]}')
+
+    # the paper's own Fig 1f cohort gate must be satisfiable on the published plate
+    n75 = sum(1 for u, v in tr['published VASA-plate'].items() if v >= 75000)
+    n750 = sum(1 for u, v in tr['published VASA-plate'].items() if v >= 750000)
+    say('published plate: %d/384 barcodes >= 75,000 trimmed reads, %d >= 750,000'
+        % (n75, n750))
+    say('  (the paper used n=174 HEK293T cells at the 75k gate; ours is over ALL')
+    say('   384 barcodes of both species before cell calling, so it is not yet')
+    say('   comparable -- the species split happens in the main pass)')
+    assert n75 > 0 and n750 > 0
     say('')
     say('PRECHECK PASSED')
     with open(f'{outdir}/threeway_precheck.txt', 'w') as fh:
@@ -567,7 +611,7 @@ def call_published_cells(outdir):
     g = GROUPS['published VASA-plate']
     path = g['ufi']
     cols = header_of(path)[1:]
-    units = unit_labels(cols, False)
+    units = unit_labels(cols, g)
     n = len(cols)
     h = np.zeros(n); m = np.zeros(n); gh = np.zeros(n); gm = np.zeros(n)
     for idx, X in read_chunks(path, cols):
@@ -619,7 +663,7 @@ def main(outdir, also_raw):
         for fam in families:
             path = g[fam]
             cols = header_of(path)[1:]
-            units = unit_labels(cols, g['drop_blanks'])
+            units = unit_labels(cols, g)
             keep_col = np.array([True] * len(cols))
             if g['drop_blanks']:
                 keep_col = np.array([u not in BLANKS for u in units])

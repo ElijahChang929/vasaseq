@@ -237,3 +237,28 @@ depletion step is leaving behind.
 - `res/threeway/{threeway,subunits,realign}_report.txt` — the three scripts' own logs
 - `code/flashseq_vasa/threeway/` — `01_vasa_subunits.py`, `02_published_realign.py`,
   `03_threeway_table.py`, and this file
+
+## Provenance note on commit 900e230
+
+Commit 900e230 contains 22 files, but **only these four belong to this task**:
+`01_vasa_subunits.py`, `02_published_realign.py`, `03_threeway_table.py`, and
+this file. The other 18 (`annotation_release_*`, `detection_threeway_*`,
+`threeway_composition.py`, `threeway_geometry.py`, `threeway_mechanism.py`,
+`threeway_paperform.py`, `mk_*`, `precheck_threeway.py`, `verify_*`,
+`fig_detection_threeway.py`, `run_coverage_threeway.sh`,
+`ANNOTATION_RELEASE_EFFECT.md`) were **pre-existing untracked files from
+concurrent work in the same directory**, and a `git add
+flashseq_vasa/threeway/` swept them into this commit. Nothing was lost or
+overwritten — they are committed as they stood — but that commit message
+describes only the four files above, so do not read it as documenting the
+others. History was deliberately not rewritten to separate them, because
+another session was actively writing in this directory at the time.
+
+Likewise in `res/threeway/`, the outputs of this task are
+`rrna_threeway.tsv`, `subunits_percell.tsv`, `ets_profile.tsv`,
+`published_realigned_47S.tsv`, `rrna_threeway.png` and the three
+`*_report.txt` logs. The `annotation_*`, `detection_*`, `composition_*` and
+`threeway_{composition,geometry,mechanism}*` files there are from that other
+line of work. There is no filename collision between the two sets, and
+`03_threeway_table.py` was re-run on the cluster from the real source tables
+to confirm the committed TSV is byte-identical to a fresh rebuild.

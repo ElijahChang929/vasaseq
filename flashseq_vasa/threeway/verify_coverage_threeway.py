@@ -40,6 +40,14 @@ def main(res, report=None):
 
     def check(name, got, want, tol=0.0005, note=''):
         nonlocal n_ok, n_bad
+        if got is None or want is None:
+            # a value this script could not obtain is a FAILED check, not a
+            # skipped one -- silently passing on None is how an unchecked
+            # number gets mistaken for a checked one
+            n_bad += 1
+            say('  [FAIL] %-52s got %-12s claim %-12s %s'
+                % (name, repr(got), repr(want), note or 'value unavailable'))
+            return False
         ok = (abs(float(got) - float(want)) <= tol
               if not isinstance(want, str) else got == want)
         n_ok += ok
@@ -111,11 +119,21 @@ def main(res, report=None):
     say('   rise = mean(bins 90-99) / mean(bins 40-59) of the MIDPOINT profile')
     r = {g: mid[mid.group == g].rise.values.astype(float)
          for g in mid.group.unique()}
-    check("published rise (mean of 12 cells)", r['VASA_published'].mean(), 0.649,
-          0.0005)
-    check("own rise (mean of 6 cells)", r['VASA_own'].mean(), 1.392, 0.0005)
-    check("FLASH-seq native rise", r['FLASHseq_native'].mean(), 0.994, 0.0005)
-    check("FLASHseq_vasalen rise", r['FLASHseq_vasalen'].mean(), 0.911, 0.0005)
+    # the writeup's headline table, cell for cell (rise, 3'/5', n, p50)
+    WRITEUP_HEAD = {
+        # group:             n   rise   ratio  p50
+        'VASA_published':   (12, 0.649, 0.790,  74),
+        'VASA_own':         (6,  1.392, 1.188, 127),
+        'FLASHseq_native':  (4,  0.994, 0.882, 150),
+        'FLASHseq_vasalen': (4,  0.911, 0.734, 107),
+    }
+    for g, (cn, crise, cratio, cp50) in WRITEUP_HEAD.items():
+        s = mid[mid.group == g]
+        check('%s n' % g, len(s), cn, 0)
+        check('%s rise' % g, s.rise.mean(), crise, 0.0005)
+        check("%s 3'/5'" % g, s.ratio.mean(), cratio, 0.0005)
+        check('%s p50 (headline table)' % g,
+              float(aln[aln.group == g].p50.iloc[0]), cp50, 0)
     check('published rise max', r['VASA_published'].max(), 0.7626, 0.0005)
     check('own rise min', r['VASA_own'].min(), 1.3442, 0.0005)
     disjoint = r['VASA_published'].max() < r['VASA_own'].min()
@@ -157,14 +175,27 @@ def main(res, report=None):
     say('4. THE READ-LENGTH CONTROL (the first objection to a shape claim)')
     sh = per[per.metric == 'mid_short']
     rs = {g: sh[sh.group == g].rise.values.astype(float) for g in sh.group.unique()}
-    check('published p50 aligned length',
-          float(aln[aln.group == 'VASA_published'].p50.iloc[0]), 74, 0)
-    check('own p50 aligned length',
-          float(aln[aln.group == 'VASA_own'].p50.iloc[0]), 127, 0)
-    check('FLASH-seq native p50', float(aln[aln.group == 'FLASHseq_native'].p50.iloc[0]),
-          150, 0)
-    check('FLASH-seq vasalen p50',
-          float(aln[aln.group == 'FLASHseq_vasalen'].p50.iloc[0]), 107, 0)
+    # EVERY cell of the writeup's aligned-length table, not just p50. A review
+    # caught a transcribed p75 of 130 for FLASHseq_vasalen where the run
+    # measured 129 (130 is that group's p95/p99) -- and the earlier version of
+    # this section asserted only p50 and frac_le_80nt, so the check could not
+    # catch it. The claims below are the table as published, cell for cell.
+    WRITEUP_ALNLEN = {
+        # group:            p05  p25  p50  p75   mean   frac_le_80nt(%)
+        'VASA_published':   (46,  71,  74,  75,  69.8, 100.0),
+        'VASA_own':         (26, 100, 127, 129, 109.7,  15.3),
+        'FLASHseq_native':  (51, 107, 150, 151, 127.1,  15.3),
+        'FLASHseq_vasalen': (28,  71, 107, 129,  96.7,  30.8),
+    }
+    for g, (c5, c25, c50, c75, cmean, cle80) in WRITEUP_ALNLEN.items():
+        row = aln[aln.group == g]
+        assert len(row) == 1, (g, len(row))
+        row = row.iloc[0]
+        for nm, got, want, tol in (('p05', row.p05, c5, 0), ('p25', row.p25, c25, 0),
+                                   ('p50', row.p50, c50, 0), ('p75', row.p75, c75, 0),
+                                   ('mean', row['mean'], cmean, 0.05),
+                                   ('<=80nt %', 100 * row.frac_le_80nt, cle80, 0.05)):
+            check('%s %s' % (g, nm), float(got), want, tol)
     check('published frac <= 80 nt',
           float(aln[aln.group == 'VASA_published'].frac_le_80nt.iloc[0]), 1.0, 1e-6,
           'the whole published library is inside the shared regime')
@@ -226,9 +257,13 @@ def main(res, report=None):
     dp = os.path.join(res, 'coverage_threeway_middrop.tsv')
     if os.path.exists(dp):
         dd = pd.read_csv(dp, sep='\t')
-        for g, want in (('VASA_published', 30.554), ('VASA_own', 41.896),
-                        ('FLASHseq_native', 47.798), ('FLASHseq_vasalen', 40.591)):
+        # the writeup's dropout table: BOTH columns, not only the percentage
+        for g, w_placed, want in (('VASA_published', 2463966, 30.554),
+                                  ('VASA_own', 14402031, 41.896),
+                                  ('FLASHseq_native', 12000000, 47.798),
+                                  ('FLASHseq_vasalen', 12000000, 40.591)):
             s = dd[dd.group == g]
+            check('%s reads placed' % g, float(s.reads_placed.sum()), w_placed, 0)
             check('%s midpoint-vote dropout (%%)' % g,
                   100 * s.dropped.sum() / s.reads_placed.sum(), want, 0.001)
         rr = float(np.corrcoef(dd.frac_dropped, dd.alnlen_p50)[0, 1])
@@ -329,6 +364,92 @@ def main(res, report=None):
                   'upstream %.3f, here %.3f' % (old, new))
     else:
         say('  upstream table absent: %s' % up)
+
+    say()
+    say('10. THE WRITEUP\'S OWN TABLES, PARSED FROM THE MARKDOWN')
+    say('    Sections 3, 4 and 7b assert hardcoded claim values that a human')
+    say('    typed into BOTH this script and THREEWAY_COVERAGE.md. That catches')
+    say('    a drifting pipeline but not a transcription slip made in both')
+    say('    places -- and a review did catch one (p75 130 for FLASHseq_vasalen')
+    say('    where the run measured 129; 130 is that group\'s p95). So the')
+    say('    markdown is parsed here and every numeric cell of its two')
+    say('    length/rise tables is re-derived from the TSVs directly.')
+    # res is <project>/res/threeway, so the repo root is two levels up. Try the
+    # committed location first, then res/ itself, then this script's own dir --
+    # and if none resolves, FAIL rather than skip: an unfindable writeup means
+    # its tables are unchecked, which is exactly the hole this section closes.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(res.rstrip('/'))))
+    cands = [os.path.join(root, 'code', 'flashseq_vasa', 'threeway',
+                          'THREEWAY_COVERAGE.md'),
+             os.path.join(res, 'THREEWAY_COVERAGE.md'),
+             os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'THREEWAY_COVERAGE.md')]
+    md = next((p for p in cands if os.path.exists(p)), cands[0])
+    if os.path.exists(md):
+        say('    reading %s' % md)
+        LAB = {'VASA-seq, published plate': 'VASA_published',
+               'VASA-seq, own plate': 'VASA_own',
+               'FLASH-seq, native': 'FLASHseq_native',
+               'FLASH-seq, VASA-trimmed': 'FLASHseq_vasalen'}
+        rows = {}
+        for line in open(md):
+            if not line.lstrip().startswith('|'):
+                continue
+            cell = [c.strip() for c in line.strip().strip('|').split('|')]
+            if cell and cell[0] in LAB:
+                rows.setdefault(LAB[cell[0]], []).append(cell[1:])
+        check('groups found in the markdown tables', len(rows), 4, 0)
+
+        import re as _re
+
+        def num(x):
+            """First number in a markdown cell, tolerating units and emphasis.
+
+            Cells look like '12 cells', '74 nt', '**0.649**', '30.554%',
+            '2,463,966'. Returns None only when the cell holds no number at
+            all -- and a None reaching a check is treated as a FAILURE below,
+            never skipped, because a cell this parser cannot read is a cell
+            nobody is checking.
+            """
+            m = _re.search(r'-?\d[\d,]*\.?\d*',
+                           x.replace('**', '').replace(',', ''))
+            return float(m.group()) if m else None
+
+        for g, blocks in rows.items():
+            srow = aln[aln.group == g].iloc[0]
+            mrow = mid[mid.group == g]
+            for cells in blocks:
+                v = []
+                for c in cells:
+                    try:
+                        v.append(num(c))
+                    except ValueError:
+                        v.append(None)
+                if len(cells) == 4 and 'cell' in cells[0] or 'librar' in cells[0]:
+                    # headline table: n | rise | 3'/5' | p50
+                    check('md headline %s rise' % g, mrow.rise.mean(), v[1], 0.0005)
+                    check("md headline %s 3'/5'" % g, mrow.ratio.mean(), v[2],
+                          0.0005)
+                    check('md headline %s p50' % g, float(srow.p50), v[3], 0)
+                elif len(cells) == 6:
+                    # alnlen table: p05 p25 p50 p75 mean <=80nt
+                    for nm, got, want, tol in (
+                            ('p05', srow.p05, v[0], 0), ('p25', srow.p25, v[1], 0),
+                            ('p50', srow.p50, v[2], 0), ('p75', srow.p75, v[3], 0),
+                            ('mean', srow['mean'], v[4], 0.05),
+                            ('<=80nt', 100 * srow.frac_le_80nt, v[5], 0.05)):
+                        check('md alnlen %s %s' % (g, nm), float(got), want, tol)
+                elif len(cells) == 2 and dp and os.path.exists(dp):
+                    # dropout table: reads placed | dropout %
+                    s = dd[dd.group == g]
+                    check('md dropout %s reads placed' % g,
+                          float(s.reads_placed.sum()), v[0], 0)
+                    check('md dropout %s pct' % g,
+                          100 * s.dropped.sum() / s.reads_placed.sum(), v[1],
+                          0.001)
+    else:
+        say('  FAIL THREEWAY_COVERAGE.md not found -- its tables are unchecked')
+        n_bad += 1
 
     say()
     say('=' * 78)

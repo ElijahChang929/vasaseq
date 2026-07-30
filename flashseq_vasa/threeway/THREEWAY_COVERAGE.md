@@ -102,7 +102,7 @@ Pooled over each group's units, from all primary alignments streamed:
 | VASA-seq, published plate | 46 | 71 | 74 | 75 | 69.8 | 100.0% |
 | VASA-seq, own plate | 26 | 100 | 127 | 129 | 109.7 | 15.3% |
 | FLASH-seq, native | 51 | 107 | 150 | 151 | 127.1 | 15.3% |
-| FLASH-seq, VASA-trimmed | 28 | 71 | 107 | 130 | 96.7 | 30.8% |
+| FLASH-seq, VASA-trimmed | 28 | 71 | 107 | 129 | 96.7 | 30.8% |
 
 → `res/threeway/coverage_threeway_alnlen.tsv`.
 

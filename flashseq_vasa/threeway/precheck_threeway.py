@@ -356,7 +356,7 @@ def main(src, report):
 
     # -------------------------------------------------- where the time goes
     say(); say('-' * 74)
-    say('7. WHERE THE TIME GOES  (the projection below is ~26 h, so this matters)')
+    say('7. WHERE THE TIME GOES  (section 8 turns this into the projection)')
     say('   Three candidates: BAM decode, the per-read placement work, and the')
     say('   fact that only a few % of reads land in a 60-gene set so most of the')
     say('   stream is decoded and thrown away. Measured, not guessed.')
@@ -404,7 +404,9 @@ def main(src, report):
     say('8. SIZING THE REAL JOB')
     say('-' * 74)
     say('  peak RSS in this precheck: %.2f GB' % rss_gb())
-    say('  The naive "150x the 20k-read precheck" projection is WRONG, because')
+    say('  SUPERSEDES the naive projection: scaling the 20k-read precheck by')
+    say('  150x gave ~26 h for this BAM set, and that figure is WRONG -- it is')
+    say('  quoted nowhere as a cost. The reason:')
     say('  the cap counts PLACED reads and the precheck used a %d-gene model.'
         % PRECHECK_GENES)
     say('  The right projection is per RECORD DECODED, which is what the BAM size')

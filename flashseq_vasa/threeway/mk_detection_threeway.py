@@ -34,8 +34,10 @@ from `_total`. So its VASA-minus-FLASH-seq lead mixes the protocol difference
 with a table difference, in the direction that favours VASA. This script
 therefore carries `table` as an explicit dimension ('uniagg' and 'total') for
 all three datasets, puts the headline on `uniagg` everywhere (the task's
-published-plate table, and the only one that exists for all three at the same
-processing stage), and reports the size of the table effect per dataset in
+published-plate table, and the family the rest of the three-way work treats as
+primary -- NOT, as an earlier version of this note claimed, the only family that
+exists for all three: `_total.ReadCounts.tsv` exists for all three too, which is
+what makes the `table` dimension below possible), and reports the size of the table effect per dataset in
 detection_threeway_tableeffect.tsv. The self-check reproduces the reference
 numbers using the reference's OWN table choice, which is what proves the
 estimator identical without adopting the mismatch.

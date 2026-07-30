@@ -6,16 +6,28 @@ from the published VASA plate, so it is a property of that library and not of
 the VASA protocol.
 
 Panel a  the four midpoint profiles, 5'->3'. The reported metric.
-Panel b  the last quarter of the transcript, expanded -- where the rise lives,
-         so the discriminating comparison is readable rather than inferred.
+Panel b  the last QUARTER of the transcript (bins 75-99), expanded -- the rise
+         itself lives in the last ~10%, but plotting from 75% shows it emerging
+         from a flat body rather than starting mid-feature.
 Panel c  3' rise per unit, with the read-length-matched subset shown as open
          markers. Read length is the first objection to a shape claim across
          two libraries of different length, so the control belongs in the panel
          that makes the claim, not only in the text.
 Panel d  aligned read-length distribution, all four groups on the record.
 
-EVERY annotated number is recomputed here from coverage_threeway.tsv and
-asserted against it -- nothing is transcribed.
+Every number this figure ANNOTATES is computed here from the tables it reads
+(coverage_threeway.tsv for per-unit statistics, coverage_threeway_alnlen.tsv for
+lengths, coverage_threeway_profile.tsv for the curves) -- including the exact
+permutation denominator, which is derived from the units present rather than
+carried as a literal. The per-group summary PRINTED at the end is likewise
+recomputed. Two structural properties are asserted: each profile sums to 1, and
+each group's pooled length histogram matches the alnlen table's own count.
+
+The `mid` metric these panels report carries a large midpoint-vote dropout
+(30.6% of placed reads for the published plate, 41.9% own; see
+mk_coverage_threeway.py). It is disclosed there rather than on the figure
+because it cannot invert the direction the figure shows -- the own plate is
+3'-heavier than the published plate under `base` too, which has no such dropout.
 
 Render-then-verify: a geometric overlap check runs after layout, nudges any
 colliding annotations apart, and only then saves. fig.savefig() is called AFTER
@@ -264,10 +276,25 @@ def main(res, covdir, out):
     own_s = risestat[('VASA_own', 'mid_short')]
     assert pub_r.max() < own_r.min(), (pub_r.max(), own_r.min())
     assert pub_s.max() < own_s.min(), (pub_s.max(), own_s.min())
+    # The permutation denominator is COMPUTED, not carried as a literal: it is
+    # C(n_pub + n_own, n_pub) for the exact test, so it must follow from the
+    # units actually present in the table rather than from a remembered number.
+    from itertools import combinations
+    from math import comb
+    pool = np.concatenate([pub_r, own_r])
+    na, ntot = len(pub_r), len(pool)
+    obs = abs(pub_r.mean() - own_r.mean())
+    nsplit = comb(ntot, na)
+    nextreme = 0
+    for cmb in combinations(range(ntot), na):
+        msk = np.zeros(ntot, bool)
+        msk[list(cmb)] = True
+        nextreme += abs(pool[msk].mean() - pool[~msk].mean()) >= obs - 1e-12
     ann.append(axC.annotate(
         "own %.2f vs published %.2f, ranges disjoint\n"
-        "1 of 18,564 splits as extreme (p = %.1e)"
-        % (own_r.mean(), pub_r.mean(), 1 / 18564),
+        "%d of %s splits as extreme (p = %.1e)"
+        % (own_r.mean(), pub_r.mean(), nextreme, format(nsplit, ','),
+           nextreme / nsplit),
         xy=(0.5, 0.99), xycoords='axes fraction', xytext=(0, 0),
         textcoords='offset points', fontsize=S_ANNOT, ha='center', va='top',
         annotation_clip=False))

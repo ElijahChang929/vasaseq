@@ -26,7 +26,35 @@ transcript length 5'->3'; average over transcripts.
 
   base   every aligned base votes for the bin it sits in -- nominally what
          qualimap and RSeQC compute.
-  mid    each read's midpoint casts ONE vote, so read length cannot tilt it.
+  mid    each read's midpoint casts ONE vote, so a long and a short read count
+         the same.
+
+A LIMITATION OF `mid` THAT IS LARGE AND MUST BE READ WITH EVERY mid NUMBER
+-------------------------------------------------------------------------
+The midpoint is the GENOMIC-SPAN midpoint, `(blocks[0][0] + blocks[-1][1])//2`.
+For a junction-spanning read that point can fall in an INTRON, where no model
+exon is found and the read casts NO vote -- while still counting in
+`reads_placed`, because its bases did place. Measured by
+`measure_middrop.py` -> `coverage_threeway_middrop.tsv`:
+
+    VASA published   30.554% of placed reads cast no midpoint vote
+    VASA own         41.896%
+    FLASH-seq native 47.798%
+    FLASH-seq vasalen 40.591%
+
+and per-unit dropout tracks p50 aligned length at r = 0.982. So `mid` is NOT
+read-length-neutral in the way the word "midpoint" suggests; it is only
+vote-count-neutral. A transcript-coordinate midpoint (from the walked
+in-transcript positions, which `profile` already computes) would remove this and
+is the obvious next fix; it is NOT done here, so every `mid` number in this
+file's outputs carries this dropout.
+
+What the dropout can and cannot do: a dropped read contributes nothing to any
+bin, so it can only reshape a profile if dropped reads are non-uniform ALONG the
+transcript. `base` has no such dropout, and under `base` the own plate is still
+3'-heavier than the published plate (own/published rise ratio 1.850 by base,
+2.144 by mid). The DIRECTION of the published-vs-own claim therefore does not
+rest on the dropout; its magnitude does.
 
 The two disagree by 2x on FLASH-seq. nf-core ran qualimap over the same
 FLASH-seq BAMs and gives 3'/5' = 0.93; `mid` gives 0.89 (agrees), `base` gives
@@ -1101,14 +1129,20 @@ def crossrel(covdir, res):
     are aligned to a GRCm38 index and there is no GRCm39 alignment of them. What
     CAN be done is to hold the reads fixed and change only the model.
 
-    `profile` is run twice on the SAME own-plate cell: once against the E116
-    models (its own release, the correct pairing) and once against a
-    LIFT-FREE approximation of the E99 models -- E99 transcript structures are
-    on GRCm38 coordinates, so they cannot be applied to a GRCm39 BAM directly.
-    Instead the release effect is bounded structurally, from the models
-    themselves: for each gene, how different is the coverage AXIS between
-    releases (length, exon count, strand)? A release effect on coverage shape
-    can only enter through those.
+    WHAT THIS FUNCTION ACTUALLY DOES: it reads
+    `coverage_threeway_geneset.genes.tsv` and summarises how far the two
+    releases' transcript models disagree -- length ratio, exon count, strand.
+    It does NOT open a BAM and does NOT call `profile`; there is no read-level
+    re-profiling here. (An earlier version of this docstring described one, and
+    was wrong. Its `covdir` argument is accepted for driver-call symmetry and
+    is unused.)
+
+    A read-level control is not possible on these inputs: E99 transcript
+    structures are on GRCm38 coordinates and the own-plate BAM is on GRCm39, so
+    the E99 models cannot be applied to it without a liftover. What IS possible
+    is bounding the effect structurally -- a release effect on coverage SHAPE
+    can only enter through the coverage axis (length, exon count, strand), so
+    measuring the axis disagreement bounds it.
 
     This is a bound, not a correction, and it is reported as one.
     """

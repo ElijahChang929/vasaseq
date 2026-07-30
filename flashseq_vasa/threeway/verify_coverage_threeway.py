@@ -218,6 +218,44 @@ def main(res, report=None):
     say('       test the hypothesis.')
 
     say()
+    say('7b. THE REPORTED METRIC\'S OWN LIMITATION, MEASURED NOT ASSUMED')
+    say('    `mid` votes at the GENOMIC-SPAN midpoint, so a junction-spanning')
+    say('    read whose midpoint lands in an intron casts NO vote while still')
+    say('    counting in reads_placed. The dropout is large and is coupled to')
+    say('    read length -- the variable `mid` exists to neutralise.')
+    dp = os.path.join(res, 'coverage_threeway_middrop.tsv')
+    if os.path.exists(dp):
+        dd = pd.read_csv(dp, sep='\t')
+        for g, want in (('VASA_published', 30.554), ('VASA_own', 41.896),
+                        ('FLASHseq_native', 47.798), ('FLASHseq_vasalen', 40.591)):
+            s = dd[dd.group == g]
+            check('%s midpoint-vote dropout (%%)' % g,
+                  100 * s.dropped.sum() / s.reads_placed.sum(), want, 0.001)
+        rr = float(np.corrcoef(dd.frac_dropped, dd.alnlen_p50)[0, 1])
+        check('corr(dropout, p50 aligned length)', rr, 0.982, 0.001,
+              'so mid is NOT read-length-neutral')
+        # the dropout cannot invert the claim: base has no such dropout
+        pbase = prof[(prof.group == 'VASA_published') & (prof.metric == 'base')]
+        obase = prof[(prof.group == 'VASA_own') & (prof.metric == 'base')]
+
+        def rise_of(row):
+            v = row[BC].values.ravel().astype(float)
+            return float(v[90:].mean() / v[40:60].mean())
+
+        rb = rise_of(obase) / rise_of(pbase)
+        pmid = prof[(prof.group == 'VASA_published') & (prof.metric == 'mid')]
+        omid = prof[(prof.group == 'VASA_own') & (prof.metric == 'mid')]
+        rm2 = rise_of(omid) / rise_of(pmid)
+        check('own/published rise ratio, by base', rb, 1.850, 0.001)
+        check('own/published rise ratio, by mid', rm2, 2.144, 0.001)
+        check('own is 3\'-heavier under BOTH metrics',
+              str(bool(rb > 1 and rm2 > 1)), 'True',
+              'the dropout cannot invert the claim\'s direction')
+    else:
+        say('  FAIL %s absent -- the dropout is unquantified' % dp)
+        n_bad += 1
+
+    say()
     say('8. THE ANNOTATION-RELEASE CONFOUND IS PRESENT AND UNREMOVED')
     lr = genes.len_ratio_116_99.values
     check('median longest-transcript length ratio E116/E99',

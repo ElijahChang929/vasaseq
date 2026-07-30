@@ -41,15 +41,26 @@ echo "=================================================================="
 
 # ---------------------------------------------------------------- stage 1
 echo; echo "### STAGE 1  published-plate cell selection (species purity)"
-# The UFI table family matters and is not interchangeable. The established
-# call table (res/threeway/threeway_published_cellcalls.tsv, written by
+# The UFI table family matters and is not interchangeable. The established call
+# table (res/threeway/threeway_published_cellcalls.tsv, written by
 # threeway_paperform.call_published_cells) was computed from the uniaggGenes
-# family, where multi-gene combination entries are collapsed. Reading the raw
-# `total` family instead shifts the Methods rule's gene fractions and moves
-# barcodes 090/208/296 mixed->mouse and 245 discarded->human, giving 144 mouse
-# instead of 141. select() asserts agreement with the established table, so a
-# wrong path here fails the job in stage 1 rather than silently profiling a
-# different cell set.
+# family; reading the raw `total` family instead gives 144 mouse cells where the
+# established table has 141 -- barcodes 090/208/296 move mixed->mouse and 245
+# discarded->human.
+#
+# The two families differ LESS than their names suggest, so the mechanism is
+# worth stating precisely: measured on these files, 459,885 of 540,226 uniagg
+# rows (85.1%) still carry a '-' multi-gene index, against 507,415 of 587,857
+# (86.3%) raw. So combinations are largely NOT collapsed in uniagg -- only
+# ~47.6k rows differ. That is nonetheless enough to shift the Methods rule's
+# GENE fractions across the 0.25 boundary for three barcodes and over the
+# 7,500-UFI gate for a fourth, because those four sit close to the thresholds.
+# The path is fixed empirically (uniagg reproduces the established table with 0
+# disagreements and every numeric column matching to 1.1e-16), not on this
+# mechanism.
+#
+# select() asserts agreement with the established table, so a wrong path here
+# fails the job in stage 1 rather than silently profiling a different cell set.
 $PY "$SRC" select \
     "$PUB/vasaplate_out_v3_uniaggGenes_total.UFICounts.tsv" \
     "$RES/coverage_threeway_pubcells.tsv"
@@ -74,8 +85,16 @@ test -s "$M99" && test -s "$M116"
 
 # ---------------------------------------------------------------- stage 3
 # One process per BAM. The units share nothing but the read-only .npz model
-# file, so this is embarrassingly parallel; the precheck measured the serial
-# cost at ~100 core-hours, which is not acceptable as wall time.
+# file, so this is embarrassingly parallel.
+#
+# Sizing, quoting only what a precheck actually printed: precheck v1 projected
+# "25.8 h for 18 BAMs" serially from measured per-BAM time at 20k reads, while
+# v2's decode-rate model projected 0.2 core-hours for the same set. The two
+# disagree by ~100x because v1 scaled a fixed-cost-dominated 20k-read timing to
+# 3M reads and v2 measured per-record decode cost; the real run took ~5 minutes
+# wall at NPROC=18, which is consistent with v2. Neither figure is ~100
+# core-hours -- an earlier version of this comment claimed the precheck measured
+# that, and no precheck output contains it.
 #
 # `wait` alone returns 0 whatever the children did, so every pid is captured and
 # waited on individually -- otherwise a failed unit would leave a silently

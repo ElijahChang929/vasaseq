@@ -15,16 +15,26 @@ so what is tested is what will execute:
   _parse_gtf, _longest  run against BOTH real GTFs, restricted to a small gene
                         set so it finishes in seconds
   _write_models         run for real, then reloaded and checked
-  profile               run for real on every BAM the job will touch, with
-                        MAX_READS cut to PRECHECK_READS
+  profile               run for real on a SUBSET of the BAMs the job will
+                        touch -- 6 of them: 2 published cells (picked by file
+                        size, which is NOT the real selection; stage 1's UFI
+                        pass is what picks those), own cells 010 and 013, and
+                        FLASH-seq A9 in both arms. MAX_READS cut to
+                        PRECHECK_READS. The driver profiles ~26 units, so most
+                        BAMs -- including FLASH-seq A1/A5/A10 and own cells
+                        007/009/011/012 -- are NOT contig-checked here. They
+                        share an index and a naming convention with the ones
+                        that are, which is the argument for the subset, but it
+                        is an argument and not a check.
 
 WHAT IS CHECKED THAT THE REAL RUN CANNOT CHECK ITSELF
 -----------------------------------------------------
 1. Every input file exists, is non-empty, and is readable.
-2. Every BAM's contig naming matches the model file it will be paired with --
-   this is the failure that would otherwise produce a silent all-zero profile
-   rather than an error, because a name mismatch just means no exon is ever
-   found. Checked by requiring >0 placed reads on every BAM.
+2. Contig naming matches the model file each BAM will be paired with -- the
+   failure that would otherwise produce a silent all-zero profile rather than an
+   error, because a name mismatch just means no exon is ever found. Checked by
+   requiring >0 placed reads, on the 6 BAMs in the subset above (one per
+   index/naming combination the job uses), not on all ~26.
 3. The published BAMs really are on the mixed index and the others really are
    not, read from each BAM's own @PG line rather than assumed.
 4. The loss decomposition adds up: bases_binned + every loss class ==

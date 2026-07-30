@@ -139,6 +139,35 @@ overhanging the annotated 3' end carry 0.370% of aligned bases pooled over all
 units — too small to be the whole base-vs-mid gap. That **bounds** the loss; it
 does not test the hypothesis.
 
+## A large limitation of the reported metric, stated plainly
+
+`mid` votes at the read's **genomic-span** midpoint. For a junction-spanning
+read that point can land in an intron, where no model exon is found and the read
+casts **no vote at all** — while still counting in `reads_placed`, because its
+bases did place. Measured (`coverage_threeway_middrop.tsv`):
+
+| group | reads placed | cast no midpoint vote |
+|---|---|---|
+| VASA-seq, published plate | 2,463,966 | **30.554%** |
+| VASA-seq, own plate | 14,402,031 | **41.896%** |
+| FLASH-seq, native | 12,000,000 | 47.798% |
+| FLASH-seq, VASA-trimmed | 12,000,000 | 40.591% |
+
+Per-unit dropout tracks p50 aligned length at **r = 0.982**. So `mid` is not
+read-length-neutral in the way the word "midpoint" implies — it is only
+*vote-count*-neutral, and the dropout is coupled to exactly the variable the
+metric was introduced to neutralise. A transcript-coordinate midpoint (from the
+in-transcript positions `profile` already walks) would remove this. **That fix is
+not applied here**, so every `mid` number above carries this dropout.
+
+What it can and cannot do: a dropped read contributes nothing to *any* bin, so it
+can only reshape a profile if dropped reads are non-uniform along the transcript.
+`base` has no midpoint dropout, and under `base` the own plate is still
+3'-heavier than the published plate — own/published rise ratio 1.850 by `base`,
+2.144 by `mid`. **The direction of the headline claim does not rest on the
+dropout**; its magnitude does. This should be fixed before the magnitude is
+quoted anywhere.
+
 ## Scope and honest limits
 
 - **n=6 own vs n=12 published cells, one plate each.** This distinguishes *this
@@ -170,5 +199,6 @@ does not test the hypothesis.
 | `coverage_threeway_pubcells.tsv` | all 384 published barcodes, both rules, which 12 were selected |
 | `coverage_threeway_geneset.genes.tsv` | the 4,000 genes with both releases' transcript models |
 | `coverage_threeway_release_bound.tsv` | E99-vs-E116 model-agreement summary |
+| `coverage_threeway_middrop.tsv` | per-unit midpoint-vote dropout (the limitation above) |
 | `coverage_threeway.png` | the figure |
 | `verify_coverage_threeway.txt` | the 59 assertions |

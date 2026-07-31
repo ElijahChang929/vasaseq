@@ -433,9 +433,15 @@ def thinned(counts, p):
 
 
 def scope(df, mouse_only=False):
-    """Upstream's counting scope, unchanged: single-gene protein-coding entries.
+    """Upstream's counting scope: single-gene protein-coding entries.
 
-    VERBATIM from mk_detection_threeway.py.
+    The keep MASK is byte-identical to mk_detection_threeway.py's scope()
+    (`single & pc [& mouse]`), so the rows counted here are exactly the rows it
+    counts. This is NOT the whole upstream function: its `ntok`/`lost`
+    hyphen-rule diagnostics and its `(df, diag)` return contract are dropped,
+    because the hyphen-rule loss is already reported for these same tables in
+    detection_threeway_scope.tsv and is not re-derived here. Returns the kept
+    frame only.
     """
     idx = df.index.astype(str)
     bio = pd.Series([i.rsplit("_", 1)[-1] if "_" in i else "NA" for i in idx], index=df.index)
@@ -530,4 +536,5 @@ with open(f"{RES}/e99_matched_report.txt", "w") as fh:
     fh.write("\n".join(log) + "\n")
 say()
 say("wrote: own_plate_E99.tsv, e99_matched_composition.tsv, e99_matched_structural.tsv,")
-say("       e99_matched_assignment.tsv, e99_matched_provenance.tsv, e99_matched_report.txt")
+say("       e99_matched_assignment.tsv, e99_matched_detection.tsv,")
+say("       e99_matched_provenance.tsv, e99_matched_report.txt")

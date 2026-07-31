@@ -25,10 +25,13 @@ What this checks, in the order the pipeline would hit it:
   5. HUMAN ARM   the own plate is mouse-only but the E99 reference is
                  human+mouse. Any read assigned to a GRCh38_ contig is
                  mismapping, and that is a NEW artefact this arm introduces
-                 which the GRCm39 arm could not have. Sized here on the
-                 published plate's own mouse cells, which are the only
-                 available empirical estimate of the mixed-reference
-                 human-bleed rate for mouse RNA.
+                 which the GRCm39 arm could not have. This section does NOT
+                 size that rate -- it cannot, since no E99 alignment of the own
+                 plate exists yet when the precheck runs. It only confirms the
+                 input needed to size it later is present
+                 (published_cell_species.tsv). The rate itself is measured in
+                 e99_matched.py, whose yardstick is the published plate's own
+                 mouse-called cells on the same mixed reference.
   6. DISK        headroom for a second set of BAMs + step-5 BEDs.
 
 Helpers copied VERBATIM from the upstream scripts are marked; everything else
@@ -203,13 +206,16 @@ say("=" * 78)
 
 
 def reduceGeneName(gene, uni_genes):
-    """VERBATIM from a_Mapping/countTables_fromPickle.py lines 142-168, the
+    """VERBATIM from a_Mapping/countTables_fromPickle.py lines 142-166, the
     COMPLETE function including the two branches past line 160.
+
+    Line numbers verified with `grep -n` on the upstream file (2026-07-30):
+    `def reduceGeneName` 142, `return rg` 166, `def fixGeneLabels` 168.
 
     Those last two branches are the whole point of this check and an earlier
     version of this file wrongly omitted them:
 
-        line 163:  if sum([g in uni_genes for g in gene.rsplit('-')]) == 1:
+        line 161:  if sum([g in uni_genes for g in gene.rsplit('-')]) == 1:
         line 164:  if gene.count('-') >= 1 and
                       sum([g.rsplit('_')[1][:2] != "Gm" for g in gene.rsplit('-')]) == 1:
 

@@ -35,8 +35,14 @@ Cost was much lower than feared, for two reasons found on disk:
 | index build | `star_index_151`, sjdbOverhang **150** | 35 min, 54 GB |
 | stage 4 STAR | 16 cells vs E99 mixed index | 12 min |
 | stage 5 assign | E99 mixed BED, **upstream** `a_Mapping/` scripts | 12 min |
-| stage 6 pickle | 8 workers | 3 h 46 min, 65.8 GB peak |
+| stage 6 pickle | 8 workers (`NCORES` in the driver) | 3 h 46 min, 65.8 GB peak |
 | stage 7 tables | 23 tables, `mapStats.log` = 21 lines (complete) | 21 min |
+
+Job `51075957` was allocated **16 CPUs / 220 GB** (`sacct`), with observed peak
+65.8 GB. Note that stage 6 runs **8** concurrent workers, not 16 — the extra
+cores served stages 4–5 only. Prior sizing work on this pipeline found 8 workers
+already optimal for stage 6 (going to 16 raises worst-case peak memory without
+reducing wall time), so a future re-run can safely request `-c 8 --mem=150G`.
 
 Outputs went to a **new tree** `data/PM26037/out_E99/`; the validated E116 tables
 were never written to (still dated 2026-07-28). `a_Mapping/` is untouched

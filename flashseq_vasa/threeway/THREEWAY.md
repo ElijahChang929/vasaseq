@@ -175,39 +175,65 @@ The two-way work concluded "structural RNA differs ~79× between protocols". But
 **the two VASA plates differ by 9.2× from each other**, on the same protocol and
 the same scripts. The published-vs-FLASH-seq contrast is **8.7×**, not 79×.
 
-**And 84.3% of the published-vs-own structural gap is annotation release, not
-biology.** Measured on the **same scale** as the 2.25% / 20.59% figures above —
-`threeway_release_control.tsv`, composition scale, non-rRNA denominator:
+**The structural gap mostly SURVIVES a matched annotation — the shared-universe
+control was biased.** The user asked whether their plate could be re-quantified
+against the *same old reference* the published plate used. It was: the own plate
+was re-mapped to GRCm38 and re-assigned against the Ensembl 99 BED — using
+`combined_genome.fa` and `combined.gtf`, **the published index's own build
+inputs**, so the gene models are byte-identical, not merely the same release.
 
-| class | published | own | raw gap | after shared-universe control |
-|---|---|---|---|---|
-| MiscRna | 1.25% | 9.82% | −8.57 pp | **−0.03 pp** |
-| snRNA | 0.16% | 7.03% | −6.87 pp | **−0.50 pp** |
-| snoRNA | 0.42% | 2.59% | −2.18 pp | **−1.14 pp** |
-| scaRNA | 0.018% | 0.060% | −0.04 pp | **−0.03 pp** |
-| ribozyme | 0.40% | 1.08% | −0.68 pp | **−1.18 pp** |
-| **summed \|gap\|** | | | **18.34 pp** | **2.89 pp** |
+| | structural RNA, % of non-rRNA |
+|---|---|
+| published plate, E99 | **2.25** |
+| own plate, E116 | **20.59** |
+| own plate, **E99 (matched)** | **17.78** |
 
-Restricting to the Ensembl 99 ∩ 116 shared gene universe collapses the summed
-structural gap from **18.34 pp to 2.89 pp — 84.3% of it was the annotation
-release.** The residual is **2.89 pp**, not the ~10 pp an uncorrected reading
-would suggest.
+| gap estimate | value | release explains |
+|---|---|---|
+| raw | 18.34 pp | — |
+| shared-gene-universe control | 2.89 pp | 84.3% ← **biased, do not use** |
+| **fully matched annotation** | **15.54 pp** | **15.3%** |
 
-Still class-dependent, and one class inverts: **MiscRna is 99.7% release**
-(−8.57 → −0.03 pp) and **snRNA 92.7%**, but **snoRNA only 47.6%**, while
-**ribozyme's gap grows** under the control (−0.68 → −1.18 pp) — i.e. the release
-was *masking* a real ribozyme difference rather than creating one. So no single
-correction factor applies, and `snoRNA` and `ribozyme` are where a genuine
-difference is most defensible.
+> **Correction, and it runs the other way from the last one.** This document
+> previously reported that **84.3%** of the structural gap was annotation release,
+> leaving a 2.89 pp residual. Under a fully matched annotation the residual is
+> **15.54 pp** and release explains only **15.3%**. The shared-gene-universe
+> control was not merely imprecise, it was **biased**: it retained only **13.10%**
+> of the own plate's 8,390,129 structural reads, and the signal sits precisely in
+> the multi-gene combination rows and release-specific rows it discarded. It
+> reported **18.6%** of the true gap and missed **81.4%**. An earlier version of
+> this document also reported **43.8%** from the annotation scale — all three
+> numbers were measured on different input spaces, and only the matched-annotation
+> one answers the question.
 
-> **Correction.** An earlier version of this document reported "43.8%" here. That
-> figure is real but comes from `annotation_crossplate_gap.tsv`, which is computed
-> on a **different scale** — single-gene mouse Ensembl rows only, a 4.85 pp gap —
-> whereas the 2.25% / 20.59% figures live on the composition scale, where the own
-> plate has 20.57% of its reads in multi-gene combination keys that the annotation
-> scale excludes. Attaching 43.8% to an 18.34 pp gap understated the release
-> effect roughly two-fold and implied ~10 pp of real excess where the correct-scale
-> control gives 2.89 pp.
+**Per class, after matching the annotation:**
+
+| class | raw gap | matched gap | release |
+|---|---|---|---|
+| snRNA | +6.87 pp | **+6.97 pp** | −1.5% |
+| MiscRna | +8.57 pp | **+5.34 pp** | 37.7% |
+| snoRNA | +2.18 pp | **+2.38 pp** | −9.2% |
+| ribozyme | +0.68 pp | **+0.80 pp** | −16.8% |
+| scaRNA | +0.04 pp | **+0.05 pp** | −10.4% |
+| *lncRNA* | +11.47 pp | *+0.88 pp* | **92.4%** |
+
+**snRNA, snoRNA, ribozyme and scaRNA are unchanged or LARGER under the matched
+annotation** — these are real, protocol-driven differences, and snRNA is the
+largest surviving effect at 44× the published plate. **MiscRna is mixed** (37.7%
+release). **lncRNA collapses to +0.88 pp — 92.4% annotation**, and any lncRNA
+claim from the earlier three-way reading should be withdrawn.
+
+**Read length is not the explanation:** measured across the five structural
+classes it totals **−0.0007 pp**, four orders of magnitude below 15.54 pp. And
+96.48% of snoRNA exon features are shorter than a single 151 nt read, so longer
+reads are structurally *worse* on short features — the confound **opposes** the
+observed difference rather than creating it.
+
+**One asymmetry, quantified.** The species filter differs between the own-plate
+E99 and E116 routes (it does not affect the published-vs-own comparison, where
+both arms use the same filter and reference), so the matched gap is reported as a
+range: **[15.54, 18.42] pp** — both ends **5.4–6.4×** the shared-universe
+control's 2.89 pp.
 
 #### 2b. Transcript coverage — the 3′ rise is this library's too
 
@@ -302,7 +328,7 @@ VASA from FLASH-seq:
 | axis | own plate | published VASA plate | verdict |
 |---|---|---|---|
 | residual rRNA | 20.68% | 11.12% | **1.9× excess, library-specific** |
-| structural RNA | 20.59% | 2.25% | 9.2× raw, but **84.3% is annotation release** |
+| structural RNA | 20.59% | 2.25% | 9.2× raw; **15.54 pp survives a matched annotation** |
 | 3′ coverage rise | 1.387 | 0.657 | **opposite sides of flat**, disjoint, d = 10.5 |
 
 Three independent measurements, one plate each, all pointing at `ZHA9292A1`
@@ -328,11 +354,15 @@ while 28S is the stable mature product, this is retention of *mature* rRNA rathe
 than capture of more nascent pre-rRNA — which points at the depletion step, not
 at input RNA quality.
 
-**Any structural-RNA claim must state the annotation release.** **84.3%** of the
-apparent VASA-vs-VASA structural difference is Ensembl 99 vs 116 (18.34 pp raw →
-**2.89 pp** residual), and the per-class fraction ranges from **−73.1%**
-(*ribozyme*, where the release was *masking* a real difference so the gap grows
-under the control) to **99.7%** (*MiscRna*). No single correction factor applies.
+**Any structural-RNA claim must state the annotation release — and a partial
+control is not enough.** Under a **fully matched** Ensembl 99 annotation, release
+explains only **15.3%** of the apparent VASA-vs-VASA structural difference
+(18.34 pp raw → **15.54 pp** surviving). The per-class picture: **snRNA, snoRNA,
+ribozyme and scaRNA are unchanged or larger** under matching (real,
+protocol-driven), **MiscRna is 37.7% release**, and **lncRNA is 92.4% release**
+and should be withdrawn as a finding. No single correction factor applies, and
+the shared-gene-universe shortcut is **biased** on these classes — it kept 13.10%
+of the structural reads and missed 81.4% of the gap.
 
 ---
 
@@ -345,8 +375,10 @@ From the completed FLASH-seq ↔ own-plate work (`COMPARISON.md`):
   five classes and read it as a protocol difference, because it had no second VASA
   library to compare against. It does not survive the three-way: the published
   VASA plate sits at **2.25%**, so the two VASA plates differ **9.2×** from each
-  other, the published-vs-FLASH-seq contrast is **8.7×** not ~90×, and **84.3%**
-  of the VASA-vs-VASA gap is annotation release. What *does* survive from the
+  other, and the published-vs-FLASH-seq contrast is **8.7×** not ~90×. Under a
+  fully matched annotation **15.54 pp of the VASA-vs-VASA gap survives** (release
+  explains only 15.3%), so the gap is real — it just separates the two libraries
+  rather than the two protocols. What *does* survive from the
   two-way work is the read-length control: **read length moves those same classes
   by ≤0.01 pp**, so the gap — whatever its size — is not a read-length artefact.
 - **Read length IS a confound for short-RNA detection**: length-matching recovers

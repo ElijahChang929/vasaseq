@@ -10,8 +10,9 @@ annotation?
 The shared-gene-universe control said annotation release explained **84.3%** of
 the structural-RNA gap, leaving 2.89 pp. Under a truly matched annotation the
 gap is **15.54 pp** (bracket 15.54–18.42, see *Caveats*), so release explains
-only **15.3%**. The partial control did not under-correct slightly; it removed
-five-sixths of a real effect.
+only **15.3%**. The partial control did not under-correct slightly: it reported
+18.6% of the real gap and missed **81.4%** of it (12.65 of 15.54 pp) — the true
+value is **5.4x** what it gave.
 
 Everything below is re-derived and asserted by `verify_e99_matched.py`
 (30 checks, 0 failures). No number here was transcribed.

@@ -391,6 +391,23 @@ check(abs(100 * kept / tot_struct - 13.10) < 0.05,
       f"the shared-universe rule keeps {100 * kept / tot_struct:.2f}% of structural reads "
       "(quoted 13.10%)")
 
+# How badly the partial control missed, expressed against the TRUE (matched) gap
+# rather than the raw gap -- these are different denominators (Rule 5) and an
+# earlier draft conflated them by calling 81.4% "five-sixths" (83.3%).
+missed_pp = gap_matched - gap_shared_prior
+pct_missed = 100.0 * missed_pp / gap_matched
+pct_reported = 100.0 * gap_shared_prior / gap_matched
+ratio = gap_matched / gap_shared_prior
+print(f"  vs the TRUE gap: partial control reported {pct_reported:.2f}%, "
+      f"missed {pct_missed:.2f}% ({missed_pp:.4f} of {gap_matched:.4f} pp), ratio {ratio:.2f}x")
+check(abs(pct_missed - 81.4) < 0.1, f"missed fraction = {pct_missed:.2f}% (quoted 81.4%)")
+check(abs(pct_reported - 18.6) < 0.1, f"reported fraction = {pct_reported:.2f}% (quoted 18.6%)")
+check(abs(missed_pp - 12.65) < 0.01, f"missed = {missed_pp:.4f} pp (quoted 12.65 pp)")
+check(abs(ratio - 5.4) < 0.05, f"true/reported ratio = {ratio:.2f}x (quoted 5.4x)")
+check(abs(pct_missed - 100 * 5 / 6) > 1.0,
+      f"{pct_missed:.2f}% is NOT five-sixths (83.33%) -- the figure and writeup say "
+      "'1/5 of the real gap' and '81.4%', not 'five-sixths'")
+
 # Detection medians.
 det = pd.read_csv(f"{RES}/e99_matched_detection.tsv", sep="\t")
 d10 = det[det.depth == 10000]

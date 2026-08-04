@@ -13,13 +13,27 @@ Only **column 1** was actually loaded — 16 wells, A1–P1, one cell per barcod
 The figure therefore fills column 1 and leaves columns 2–24 as empty wells, so
 the barcode-per-row scheme and what was used are both visible in one picture.
 
+The 16 loaded wells are four samples, four barcodes each:
+
+| wells | barcodes | sample |
+|---|---|---|
+| A1–D1 | 01–04 | XY |
+| E1–H1 | 05–08 | XO |
+| I1–L1 | 09–12 | EpiLCs |
+| M1–P1 | 13–16 | NTC (no-template control) |
+
+Worth knowing when reading the mapping output: `../I_Gene_expression/own_version/README.md`
+reports **cells 001, 014, 015 and 016** as 5–30× lower than the rest and
+behaving as blanks. Three of those (014–016) are NTC wells, as expected — but
+**001 is an XY sample**, not a control.
+
 ## Files
 
 | file | what it is |
 |---|---|
 | `plate_design.R` | the whole thing: builds the layout, writes the table, draws the plate |
 | `plate_layout_384.png` / `.pdf` | the figure (8 × 5.5 in; PDF is the one to put in a paper/slide) |
-| `plate_layout_384.tsv` | the layout as a table — `position`, `row`, `col`, `barcode`, `barcode_seq`. `barcode` is `NA` for columns 2–24, matching the figure |
+| `plate_layout_384.tsv` | the layout as a table — `position`, `row`, `col`, `sample`, `barcode`, `barcode_seq`. `sample` and `barcode` are `NA` for columns 2–24, matching the figure |
 
 ## Environment
 
@@ -63,3 +77,10 @@ Everything is driven by `plate$barcode_n` (which barcode a well gets) and the
 `plate$barcode[plate$col != 1] <- NA` line (which wells are used). For barcodes
 cycling *along* each row instead of down the rows, that is a one-line change to
 `barcode_n`.
+
+The sample brackets come from the `sample_groups` data frame — edit
+`first_bc`/`last_bc` there and both the figure and the TSV follow. They are
+drawn as plain `geom_segment` + `geom_text` on top of the ggplate object:
+`plate_plot()`'s panel is an ordinary continuous grid where **x is the column
+number (1–24) and y counts rows from the bottom**, so row A is `y = 16` and row
+P is `y = 1`.

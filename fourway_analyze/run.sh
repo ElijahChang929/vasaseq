@@ -48,7 +48,9 @@
 #
 #   export PLATE_CELLS=<...>/plate_e116/cells
 #   export FOURWAY_OUT=<...>/fourway_analyze_e116
-#   export MOUSECONTIG=''      # REQUIRED -- see below
+#   export MOUSECONTIG=''      # REQUIRED for 04 -- see below
+#   export PLATE_BED=<...>/Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed
+#   export PLATE_PREFIX=''     # REQUIRED for 07 -- see below
 #   scripts/01_insilico_depletion.sh; sbatch ... scripts/0{2,3,4}_*; ...
 #   FOURWAY_OUT=$FOURWAY_OUT PLATE_CELLS=$PLATE_CELLS ./run.sh
 #
@@ -61,6 +63,13 @@
 # and its contigs are plain `1`, `2`, ..., so the default filter matches nothing
 # and discards all 173 wells. 04 now refuses to finish when a whole dataset ends
 # with zero BED reads, but the variable still has to be set.
+#
+# PLATE_BED / PLATE_PREFIX are the same hazard in script 07, and worse there
+# because it does not look broken: run against the E99 mixed BED, the
+# E116-mapped plate still produced a curve, but from GRCm38 exon coordinates
+# describing GRCm39 reads -- genes_covered 14,936 -> 1,505, and the shared gene
+# set across all four datasets 11,377 -> 827. 07 now fails when one dataset
+# covers less than a quarter of the median.
 #
 # Layout: scripts/ code (numbered by run order), tables/ TSVs,
 # figures/<step>/ PNG+PDF. Everything below is seconds on the login node.

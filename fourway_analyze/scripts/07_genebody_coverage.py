@@ -249,11 +249,23 @@ def main():
         if not os.path.exists(p):
             sys.stderr.write("missing annotation BED: %s\n" % p)
             sys.exit(1)
+    # The plate's annotation follows the reference the plate was MAPPED to, and
+    # that is now a choice rather than a constant: 00b_plate_e116.sh re-maps it
+    # to mouse-only GRCm39. Getting this wrong is not a small error -- running
+    # the E116-mapped plate against the E99 mixed BED (job 51394172) dropped
+    # genes_covered from 14,936 to 1,505, because GRCm38 exon coordinates do not
+    # describe GRCm39 reads, and that collapsed the shared gene set for ALL FOUR
+    # datasets from 11,377 to 827. It completed successfully while doing it.
+    plate_bed = os.environ.get("PLATE_BED", e99)
+    plate_pfx = os.environ.get("PLATE_PREFIX", "GRCm38_")   # set empty when mouse-only
+    if not os.path.exists(plate_bed):
+        sys.stderr.write("missing plate annotation BED: %s\n" % plate_bed)
+        sys.exit(1)
     refs = {
         "own130": (e116, None),
         "own75": (e116, None),
         "fs": (e116, None),
-        "plate": (e99, "GRCm38_"),   # mouse contigs only, this is a mixed ref
+        "plate": (plate_bed, plate_pfx or None),
     }
 
     cov = {}
@@ -288,6 +300,20 @@ def main():
                      % (len(shared), MIN_READS_PER_GENE))
     if len(shared) < 100:
         sys.stderr.write("too few shared genes -- refusing to write a curve\n")
+        sys.exit(1)
+
+    # One dataset scored against the wrong assembly still produces a curve; what
+    # it cannot produce is a normal number of covered genes. Comparing each
+    # dataset against the median catches an annotation/assembly mismatch at the
+    # point it happens rather than leaving it to be noticed in a figure.
+    covered = {lab: qc[lab]["genes_covered"] for lab in qc}
+    med = sorted(covered.values())[len(covered) // 2]
+    off = {k: v for k, v in covered.items() if v < med / 4}
+    if off:
+        for k, v in off.items():
+            sys.stderr.write("  %s covers %d genes against a median of %d\n" % (k, v, med))
+        sys.stderr.write("that is an annotation/assembly mismatch, not depth -- check "
+                         "PLATE_BED / PLATE_PREFIX against how each dataset was mapped\n")
         sys.exit(1)
 
     tab = os.path.join(OUTROOT, "tables", "cross")

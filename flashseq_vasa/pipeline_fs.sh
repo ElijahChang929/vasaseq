@@ -499,7 +499,9 @@ do_pickle1() {
     ( cd "$d" && "${FSV_VASA_SCRIPTS}/countTables_2pickle_cellsSpliced.py" \
         "cells" "$lib" "$FSV_PROTOCOL" "$FSV_CELLID_FROM" ) || die "$lib: step 6 failed"
     [ -s "$d/${lib}dict.pickle" ] || die "$lib: step 6 wrote no dict.pickle"
-    say "pickle1 $lib done: $(ls -lh "$d/${lib}dict.pickle" | awk '{print $5}')"
+    # du, not `ls -lh | awk '{print $5}'` -- the group here is "domain users",
+    # so the space in it shifts every ls field and $5 prints "users", not a size.
+    say "pickle1 $lib done: $(du -Lh "$d/${lib}dict.pickle" | cut -f1)"
 }
 
 stage_pickle1() {

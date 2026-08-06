@@ -45,4 +45,6 @@ env -u PYTHONPATH $PY "$VC/01_compare.py" v3 2>&1 | tail -40 ||   echo "01_compa
 
 echo
 echo "=== comparison outputs ==="
-ls -la $R/*.tsv 2>/dev/null | awk '{print "  ", $5, $9}'
+# find -printf, not `ls -la | awk '{print $5}'` -- the group is "domain users"
+# and the space in it shifts every ls field, so $5 prints "users", not a size.
+find $R -maxdepth 1 -name '*.tsv' -printf '   %10s  %p\n' 2>/dev/null | sort -k2

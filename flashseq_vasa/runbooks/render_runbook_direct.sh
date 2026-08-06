@@ -28,21 +28,91 @@ QUARTO_BIN=/camp/apps/eb/software/quarto/1.5.57-x64/bin/quarto
 export QUARTO_PYTHON=/nemo/lab/turnerj/working/guangxin/envs/runbook/bin/python
 export PATH=/nemo/lab/turnerj/working/guangxin/envs/reanalysis_R/bin:$PATH
 
+# Pin LC_NUMERIC so the rendered numbers are reproducible. Added 2026-07-30.
+# The document's chunks use printf "%'d", whose thousands separator comes from
+# the locale: under a login shell it gave "1,154,910", under a batch job
+# (LANG=C.UTF-8) the same chunk printed "1154910". Same value, different text,
+# so a diff of two renders was full of noise that looked like drift.
+# Only LC_NUMERIC is set -- NOT LC_ALL, because LC_COLLATE would change `sort`
+# order inside the chunks and that WOULD alter results.
+export LC_NUMERIC=en_US.utf8
+
 echo "quarto  : $("$QUARTO_BIN" --version)"
 echo "python  : $QUARTO_PYTHON"
 echo "pandoc  : $(command -v pandoc)"
 "$QUARTO_PYTHON" -c "import bash_kernel; print('bash_kernel: OK')"
 
-"$QUARTO_BIN" render "$QMD" --to html
-echo "QUARTO_EXIT=$?"
+# --------------------------------------------------------------------------
+# WARM THE SHELL-STARTUP CACHE BEFORE RENDERING. Added 2026-07-30.
+#
+# bash_kernel starts bash through pexpect with pexpect's own bashrc.sh as
+# --rcfile, and that file SOURCES ~/.bashrc. Our ~/.bashrc runs `conda init`,
+# which reads a large tree under /camp/apps/eb/software/Anaconda3/2024.10-1/.
+# On a compute node with a cold page cache that takes ~45 s -- and pexpect's
+# prompt timeout is 30 s. The kernel dies before replying to kernel_info and
+# quarto exits 1 without writing anything.
+#
+# Measured on cn087, job 51055067, three consecutive real kernel boots:
+#     1st (cold) 46.8 s -> FAILED
+#     2nd (warm) 22.9 s -> ok
+#     3rd (warm)  8.9 s -> ok
+#
+# It is purely a cold-cache effect, so touching the same path once first is
+# enough. This is why the document renders on a login node (cache always warm
+# there) but not on a fresh compute node -- and rendering on a login node is
+# exactly what the runbook forbids.
+PEXPECT_RC=$("$QUARTO_PYTHON" -c \
+    "import pexpect,os;print(os.path.join(os.path.dirname(pexpect.__file__),'bashrc.sh'))")
+echo "warmup  : $PEXPECT_RC"
+for attempt in 1 2 3; do
+    t0=$(date +%s)
+    bash --rcfile "$PEXPECT_RC" -i -c 'true' >/dev/null 2>&1 || true
+    el=$(( $(date +%s) - t0 ))
+    echo "warmup  : attempt $attempt took ${el}s (need < 30s for pexpect)"
+    [ "$el" -lt 20 ] && break
+done
+if [ "$el" -ge 30 ]; then
+    echo "VERIFY: FAIL -- shell startup still ${el}s after $attempt warmups;" \
+         "pexpect will time out at 30s and the kernel will die." >&2
+    exit 1
+fi
 
-# --------------------------------------------------------------------------
-# THE EXIT-0 TRAP. Quarto embeds a failing chunk's error text in the HTML and
-# still exits 0, so the exit status proves nothing. Verify the ARTEFACT.
-# --------------------------------------------------------------------------
 HTML="${QMD%.qmd}.html"
+
+# STALE-ARTEFACT GUARD, added 2026-07-30 after this script reported
+# "VERIFY: PASS" on a render that never happened.
+#
+# What went wrong: quarto died with `Kernel died before replying to kernel_info`
+# and exited 1, so no new HTML was written -- but the PREVIOUS run's HTML was
+# still sitting there. Every check below then ran against that file, found the
+# sentinel and the self-checks (because the OLD render really had passed), and
+# printed PASS. Job 51052670.
+#
+# So record what was on disk before, and refuse to verify a file the render did
+# not touch. "The output file exists" is not evidence the stage ran.
+HTML_BEFORE=""
+[ -f "$HTML" ] && HTML_BEFORE=$(stat -c %Y "$HTML")
+
+"$QUARTO_BIN" render "$QMD" --to html
+QUARTO_EXIT=$?
+echo "QUARTO_EXIT=$QUARTO_EXIT"
+
 if [ ! -f "$HTML" ]; then
     echo "VERIFY: FAIL -- no HTML produced" >&2
+    exit 1
+fi
+
+HTML_AFTER=$(stat -c %Y "$HTML")
+if [ -n "$HTML_BEFORE" ] && [ "$HTML_BEFORE" = "$HTML_AFTER" ]; then
+    echo "VERIFY: FAIL -- $HTML was NOT rewritten (mtime unchanged:" \
+         "$(date -d @"$HTML_AFTER" '+%F %T')). This is a STALE artefact from an" \
+         "earlier run; nothing below it would mean anything." >&2
+    exit 1
+fi
+
+# A non-zero quarto exit is a real failure even though a zero one proves nothing.
+if [ "$QUARTO_EXIT" -ne 0 ]; then
+    echo "VERIFY: FAIL -- quarto exited $QUARTO_EXIT" >&2
     exit 1
 fi
 

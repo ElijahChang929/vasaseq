@@ -1,0 +1,121 @@
+==============================================================================
+VERIFY -- inputs present
+==============================================================================
+  ok   vasaplate_out_v3_uniaggGenes_total.ReadCounts.tsv
+  ok   vasaplate_out_v3_total.UFICounts.tsv
+  ok   ZHA9292A1_uniaggGenes_total.ReadCounts.tsv
+  ok   ZHA9292A1_uniaggGenes_total.ReadCounts.tsv
+  ok   Human_Mouse_ensembl99.homemade_IntronExonTrna.v2.bed
+  ok   Mus_musculus.GRCm39.116.homemade_IntronExonTrna.v2.bed
+  ok   own_plate_E99.tsv
+  ok   e99_matched_structural.tsv
+  ok   e99_matched_composition.tsv
+  ok   e99_matched_assignment.tsv
+  ok   threeway_release_control.tsv
+  ok   threeway_structural.tsv
+
+==============================================================================
+VERIFY -- published mouse cell calls (Fig.1d rule)
+==============================================================================
+  ok   173 mouse-called barcodes (got 173)
+
+==============================================================================
+VERIFY -- composition, recomputed by a different route
+==============================================================================
+  ok   12 real own-plate cells (got 12)
+  ok   own_plate_E99.tsv reproduced for all 27 biotypes (tol 0.0005)
+
+==============================================================================
+VERIFY -- THE KEY NUMBER
+==============================================================================
+  published E99               2.2474%
+  own       E116             20.5906%
+  own       E99 (matched)    17.7828%
+  gap raw      18.3432 pp   (committed three-way: 18.3432)
+  gap shared    2.8876 pp   (committed three-way)
+  gap matched  15.5353 pp   (this work)
+  ok   published structural % reproduces the committed threeway_structural.tsv
+  ok   own-E116 structural % reproduces the committed threeway_structural.tsv
+  ok   raw gap reproduces the committed release-control sum (18.3432 vs 18.3432)
+  ok   e99_matched_structural.tsv structural gap_matched sums to 15.5353 pp
+  release explains 15.31% of the raw structural gap
+  the shared-universe control implied 84.26%
+  ok   matched gap (15.5353) is many times the shared-universe gap (2.8876) -- the partial control was BIASED, not adequate
+
+==============================================================================
+VERIFY -- A: the two VASA arms share one denominator rule and one filter
+==============================================================================
+  ok   both arms: ReadCounts, uniaggGenes_total, non-rRNA denominator, mouse-only species filter, Ensembl 99 BED, upstream step-5 code
+  denominators: published      42,050,713   own-E99      47,181,235
+  species-filter drop: published    1,700,818   own-E99    3,110,298
+
+==============================================================================
+VERIFY -- B: the ONE asymmetry in own-E99 vs own-E116
+==============================================================================
+  own-E99 rows dropped by the mouse-only filter: 3,110,298 (6.183% of all its rows), of which
+      human       959,477 (1.907%)
+      mixed     2,150,821 (4.276%)
+  the SAME filter on the published arm drops 1,700,818 (3.887% of its rows)
+  ok   the key number (published-E99 vs own-E99) applies one identical filter to both arms on one identical reference, so it cannot be biased by it
+  own-E99 structural %: 17.7828 with the filter, 20.6665 without it (delta +2.8838 pp)
+  matched gap: 15.5353 pp with, 18.4191 pp without
+  ok   the conclusion holds under BOTH filter choices (15.5353 and 18.4191 pp, both >> the 2.8876 pp shared-universe gap), so it does not rest on the filter
+  => matched structural gap BRACKET: [15.5353, 18.4191] pp (filter on / off); shared-universe estimate was 2.8876 pp
+  ok   the LOWER end of the bracket (15.5353 pp) still exceeds the shared-universe estimate (2.8876 pp) by 5.4x
+
+==============================================================================
+VERIFY -- C: why the shared-universe control under-reported the gap
+==============================================================================
+  own-E99 structural reads total                :      8,390,129
+  ... surviving the shared-universe control rule :      1,099,189 (13.10%)
+  ... discarded as combination rows              :      3,061,250
+  ... discarded as gene id not in both releases  :      4,229,690
+  ok   the shared-universe rule keeps only 13.1% of the own plate's structural reads -- it removed the signal rather than controlling for release, which is why it under-reported the gap
+
+==============================================================================
+VERIFY -- D: the two own-plate arms did not lose reads wholesale
+==============================================================================
+  all-row reads: E99 50,301,326   E116 53,022,589   ratio 0.9487
+  ok   the two arms carry within 10% of the same reads (ratio 0.9487), so the composition shift is a re-attribution, not a mapping loss
+
+==============================================================================
+VERIFY -- assignment churn table
+==============================================================================
+  ok   simple-row reads under E99 = 42,897,518
+  ok   simple-row reads under E116 = 41,955,553
+  ok   reads on E99-only gene ids = 4,526,008 (10.551%)
+  ok   reads on E116-only gene ids = 5,848,536 (13.940%)
+
+==============================================================================
+VERIFY -- numbers quoted in E99_MATCHED.md, against their source tables
+==============================================================================
+  readlen_effect_pp summed over the 5 structural classes: -0.0007 pp (largest single |0.0029|)
+  ok   the measured read-length effect on structural composition is -0.0007 pp, far too small to account for the 15.54 pp matched gap
+  ok   E99_MATCHED.md quotes -0.0007 pp for that sum
+  ok   E99_MATCHED.md quotes 0.0029 pp as the largest single class
+  ok   snoRNA: 96.48% of exon features < 151 nt (E99_MATCHED.md quotes 96.48)
+  ok   miRNA: 99.23% of exon features < 151 nt (E99_MATCHED.md quotes 99.23)
+  ok   snRNA: 84.55% of exon features < 151 nt (E99_MATCHED.md quotes 84.55)
+  ok   MiscRna: 23.49% of exon features < 151 nt (E99_MATCHED.md quotes 23.49)
+  ok   published E99 structural % = 2.2474 (quoted 2.25)
+  ok   own E116 structural % = 20.5906 (quoted 20.59)
+  ok   own E99 structural % = 17.7828 (quoted 17.78)
+  ok   own E99 structural % (filter off) = 20.6665 (quoted 20.67)
+  ok   release explains 15.31% of the raw structural gap (quoted 15.3%)
+  ok   the shared-universe control implied 84.26% (quoted 84.3%)
+  ok   the shared-universe rule keeps 13.10% of structural reads (quoted 13.10%)
+  vs the TRUE gap: partial control reported 18.59%, missed 81.41% (12.6477 of 15.5353 pp), ratio 5.38x
+  ok   missed fraction = 81.41% (quoted 81.4%)
+  ok   reported fraction = 18.59% (quoted 18.6%)
+  ok   missed = 12.6477 pp (quoted 12.65 pp)
+  ok   true/reported ratio = 5.38x (quoted 5.4x)
+  ok   81.41% is NOT five-sixths (83.33%) -- the figure and writeup say '1/5 of the real gap' and '81.4%', not 'five-sixths'
+  ok   published_E99 median genes at 10k = 4069.2 (quoted 4069)
+  ok   own_E99 median genes at 10k = 4245.5 (quoted 4245)
+  ok   own_E116 median genes at 10k = 4591.5 (quoted 4592)
+  ok   detection n = 173 published, 12 own (quoted 173, 12)
+  ok   out_E99 mapStats.log has 21 lines (a complete run writes 21)
+
+==============================================================================
+VERIFY: all checks passed
+==============================================================================

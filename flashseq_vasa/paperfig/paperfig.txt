@@ -1,0 +1,40 @@
+PAPER TF list: 1623 symbols; cofactor list: 970 symbols
+VASA                222420 entries, 12 units, 53,022,536 counts
+FLASH-seq native    270217 entries, 10 units, 242,660,399 counts
+FLASH-seq vasalen   523776 entries, 10 units, 242,452,628 counts
+
+=== Fig 2b, the paper's own classes and denominator ===
+  panel          dataset                  min   median      max  n_entries
+  ProteinCoding  VASA                  0.5818   0.6347   0.6858  95590
+  ProteinCoding  FLASH-seq native      0.8011   0.8375   0.8465  73972
+  ProteinCoding  FLASH-seq vasalen     0.7644   0.8128   0.8216  148330
+  lncRNA         VASA                  0.0462   0.0577   0.0708  36893
+  lncRNA         FLASH-seq native      0.0400   0.0417   0.0475  31955
+  lncRNA         FLASH-seq vasalen     0.0364   0.0379   0.0436  47537
+  smallRNA       VASA                  0.1385   0.1869   0.2517  1881
+  smallRNA       FLASH-seq native      0.0017   0.0024   0.0046  1035
+  smallRNA       FLASH-seq vasalen     0.0019   0.0026   0.0048  1826
+  tRNA           VASA                  0.0000   0.0000   0.0000  0
+  tRNA           FLASH-seq native      0.0000   0.0000   0.0000  0
+  tRNA           FLASH-seq vasalen     0.0000   0.0000   0.0000  0
+  TF             VASA                  0.0380   0.0406   0.0429  14474
+  TF             FLASH-seq native      0.0305   0.0442   0.0467  17874
+  TF             FLASH-seq vasalen     0.0305   0.0444   0.0470  37426
+  Cofactor       VASA                  0.0589   0.0667   0.0760  10785
+  Cofactor       FLASH-seq native      0.0654   0.0864   0.0883  15191
+  Cofactor       FLASH-seq vasalen     0.0645   0.0865   0.0886  30008
+
+wrote paperfig2b_fractions.tsv
+
+=== Fig 1f, paper axes, my reimplementation ===
+dataset  FLASH-seq native  FLASH-seq vasalen     VASA
+depth                                                
+5000               2986.0             3108.0   2537.0
+10000              4775.0             5017.0   4168.0
+15000              6109.0             6461.0   5412.0
+20000              7182.0             7635.0   6420.0
+25000              8081.0             8630.0   7269.0
+50000             11208.0            12172.0  10223.0
+75000             13247.0            14564.0  12143.0
+
+wrote paperfig1f_saturation.tsv

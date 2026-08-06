@@ -1,0 +1,13 @@
+dataset	category	n	median	q1	q3
+VASA own, 130 nt	Uniquely mapped	42511694	129	110	130
+VASA own, 130 nt	Multi-mapped	21092590	110	68	130
+VASA own, 130 nt	Unmapped	9028116	91	64	128
+VASA own, 75 nt	Uniquely mapped	40120957	75	73	75
+VASA own, 75 nt	Multi-mapped	23961869	74	64	75
+VASA own, 75 nt	Unmapped	7169257	54	40	74
+VASA published, mouse	Uniquely mapped	41347299	75	73	75
+VASA published, mouse	Multi-mapped	7254928	74	72	75
+VASA published, mouse	Unmapped	3506654	74	70	75
+FLASH-seq	Uniquely mapped	208610808	150	119	151
+FLASH-seq	Multi-mapped	32304999	130	74	151
+FLASH-seq	Unmapped	23297353	150	119	151

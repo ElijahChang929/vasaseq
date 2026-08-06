@@ -1,0 +1,5 @@
+dataset	units	assigned_reads	min_per_cell	max_per_cell	cells_ge_75k
+VASA own, 130 nt	16	39079109	19626	6322489	12
+VASA own, 75 nt	16	36555431	20077	5918955	12
+VASA published, mouse	173	40977115	17956	875991	142
+FLASH-seq	10	222251641	0	31930036	9

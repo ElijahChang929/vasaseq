@@ -1,0 +1,21 @@
+biotype	dataset	crude	standardised	lengths
+snRNA	VASA own, 130 nt	3.9	5.1	61
+snRNA	VASA own, 75 nt	16.2	17.4	61
+snRNA	VASA published, mouse	3.2	3.2	61
+snRNA	FLASH-seq	0	0	48
+miRNA	VASA own, 130 nt	8	13.8	61
+miRNA	VASA own, 75 nt	9.8	10.1	61
+miRNA	VASA published, mouse	3.6	3.6	61
+miRNA	FLASH-seq	1.8	2.2	56
+snoRNA	VASA own, 130 nt	1.1	2.3	61
+snoRNA	VASA own, 75 nt	3.5	3.7	61
+snoRNA	VASA published, mouse	1.6	1.6	61
+snoRNA	FLASH-seq	0	0	52
+MiscRna	VASA own, 130 nt	8	14.4	61
+MiscRna	VASA own, 75 nt	22.1	23.8	61
+MiscRna	VASA published, mouse	14.9	14.9	61
+MiscRna	FLASH-seq	1.6	1.8	56
+ProcessedPseudogene	VASA own, 130 nt	5.2	7.7	61
+ProcessedPseudogene	VASA own, 75 nt	10.8	11.4	61
+ProcessedPseudogene	VASA published, mouse	30.4	30.4	61
+ProcessedPseudogene	FLASH-seq	51.9	46.4	56

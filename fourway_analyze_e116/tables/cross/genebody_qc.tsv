@@ -1,0 +1,5 @@
+dataset	exonic_reads	intronic_reads	pct_intronic	genes_covered	genes_used
+VASA own, 130 nt	22260186	7589033	25.42	16158	11586
+VASA own, 75 nt	20691488	7460604	26.50	16329	11586
+VASA published, mouse	20629147	14619605	41.48	15257	11586
+FLASH-seq	163756839	15175590	8.48	15773	11586

@@ -1,0 +1,179 @@
+dataset	class	biotype	reads	bed	pct
+own library, 130 nt	Uniquely mapped	ProteinCoding	31570343	35349127	89.31010658339596
+own library, 130 nt	Uniquely mapped	lncRNA	3135739	35349127	8.870767869316829
+own library, 130 nt	Uniquely mapped	ribozyme	746019	35349127	2.1104311854717093
+own library, 130 nt	Uniquely mapped	snoRNA	733337	35349127	2.074554769061199
+own library, 130 nt	Uniquely mapped	MiscRna	698405	35349127	1.9757347897163062
+own library, 130 nt	Uniquely mapped	snRNA	401834	35349127	1.1367579176707816
+own library, 130 nt	Uniquely mapped	miRNA	142113	35349127	0.40202690154130255
+own library, 130 nt	Uniquely mapped	ProcessedPseudogene	84964	35349127	0.24035671375986173
+own library, 130 nt	Uniquely mapped	TEC	67292	35349127	0.19036396570698902
+own library, 130 nt	Uniquely mapped	rRNA	42601	35349127	0.12051499885697319
+own library, 130 nt	Uniquely mapped	TranscribedProcessedPseudogene	36761	35349127	0.10399408166430815
+own library, 130 nt	Uniquely mapped	scaRNA	35736	35349127	0.10109443438306129
+own library, 130 nt	Uniquely mapped	TranscribedUnprocessedPseudogene	22202	35349127	0.06280777457389541
+own library, 130 nt	Uniquely mapped	MtRrna	9118	35349127	0.025794130644301343
+own library, 130 nt	Uniquely mapped	tRNA	8759	35349127	0.024778546864820734
+own library, 130 nt	Uniquely mapped	TranscribedUnitaryPseudogene	7257	35349127	0.020529502751227776
+own library, 130 nt	Uniquely mapped	MtTrna	3467	35349127	0.009807880121056455
+own library, 130 nt	Uniquely mapped	UnprocessedPseudogene	3448	35349127	0.009754130561696757
+own library, 130 nt	Uniquely mapped	UnitaryPseudogene	2426	35349127	0.006862970052980375
+own library, 130 nt	Uniquely mapped	TranslatedUnprocessedPseudogene	55	35349127	1.5559082972544131e-4
+own library, 130 nt	Uniquely mapped	TrVPseudogene	12	35349127	3.394709012191447e-5
+own library, 130 nt	Uniquely mapped	TrVGene	11	35349127	3.111816594508826e-5
+own library, 130 nt	Uniquely mapped	IgVGene	8	35349127	2.2631393414609647e-5
+own library, 130 nt	Uniquely mapped	TrCGene	6	35349127	1.6973545060957233e-5
+own library, 130 nt	Uniquely mapped	sRNA	6	35349127	1.6973545060957233e-5
+own library, 130 nt	Uniquely mapped	IgVPseudogene	5	35349127	1.4144620884131028e-5
+own library, 130 nt	Uniquely mapped	pseudogene	5	35349127	1.4144620884131028e-5
+own library, 130 nt	Uniquely mapped	IgCGene	3	35349127	8.486772530478617e-6
+own library, 130 nt	Uniquely mapped	TrJGene	3	35349127	8.486772530478617e-6
+own library, 130 nt	Multi-mapped	lncRNA	14057790	19484483	72.14864258907973
+own library, 130 nt	Multi-mapped	ProteinCoding	12749973	19484483	65.43654763639353
+own library, 130 nt	Multi-mapped	MiscRna	4564898	19484483	23.428376313602982
+own library, 130 nt	Multi-mapped	snRNA	3546335	19484483	18.200816516404362
+own library, 130 nt	Multi-mapped	miRNA	2519393	19484483	12.930253268716445
+own library, 130 nt	Multi-mapped	ProcessedPseudogene	1393085	19484483	7.149714980890178
+own library, 130 nt	Multi-mapped	snoRNA	770636	19484483	3.955126753940559
+own library, 130 nt	Multi-mapped	TranscribedProcessedPseudogene	621143	19484483	3.187885457366254
+own library, 130 nt	Multi-mapped	UnprocessedPseudogene	205419	19484483	1.054269697584483
+own library, 130 nt	Multi-mapped	rRNA	176843	19484483	0.907609403852286
+own library, 130 nt	Multi-mapped	TranscribedUnprocessedPseudogene	79180	19484483	0.40637465207570556
+own library, 130 nt	Multi-mapped	TranscribedUnitaryPseudogene	44204	19484483	0.22686770801154948
+own library, 130 nt	Multi-mapped	TEC	36862	19484483	0.18918644133385526
+own library, 130 nt	Multi-mapped	UnitaryPseudogene	18103	19484483	0.09290982983741472
+own library, 130 nt	Multi-mapped	tRNA	17159	19484483	0.08806494891345076
+own library, 130 nt	Multi-mapped	ribozyme	3005	19484483	0.015422528788677637
+own library, 130 nt	Multi-mapped	MtTrna	2011	19484483	0.01032103340899525
+own library, 130 nt	Multi-mapped	MtRrna	791	19484483	0.004059640689465561
+own library, 130 nt	Multi-mapped	scaRNA	226	19484483	0.001159897339847303
+own library, 130 nt	Multi-mapped	IgVGene	87	19484483	4.46509152950068e-4
+own library, 130 nt	Multi-mapped	TrVGene	87	19484483	4.46509152950068e-4
+own library, 130 nt	Multi-mapped	IgVPseudogene	66	19484483	3.3873108154832744e-4
+own library, 130 nt	Multi-mapped	TranslatedUnprocessedPseudogene	52	19484483	2.668790339471671e-4
+own library, 130 nt	Multi-mapped	IgCGene	51	19484483	2.617467448327985e-4
+own library, 130 nt	Multi-mapped	TrCGene	24	19484483	1.2317493874484635e-4
+own library, 130 nt	Multi-mapped	TrVPseudogene	17	19484483	8.724891494426616e-5
+own library, 130 nt	Multi-mapped	pseudogene	8	19484483	4.105831291494878e-5
+own library, 130 nt	Multi-mapped	IgCPseudogene	1	19484483	5.1322891143685975e-6
+own library, 130 nt	Multi-mapped	IgJGene	1	19484483	5.1322891143685975e-6
+own library, 130 nt	Multi-mapped	IgLvGene	1	19484483	5.1322891143685975e-6
+own library, 130 nt	Multi-mapped	TrJGene	1	19484483	5.1322891143685975e-6
+own library, 75 nt	Uniquely mapped	ProteinCoding	29832342	33183428	89.90132665015803
+own library, 75 nt	Uniquely mapped	lncRNA	3003540	33183428	9.051325257896803
+own library, 75 nt	Uniquely mapped	ribozyme	731912	33183428	2.205655184268485
+own library, 75 nt	Uniquely mapped	snoRNA	700999	33183428	2.1124972380792
+own library, 75 nt	Uniquely mapped	MiscRna	387327	33183428	1.1672302210609464
+own library, 75 nt	Uniquely mapped	snRNA	364901	33183428	1.099648294323299
+own library, 75 nt	Uniquely mapped	miRNA	97154	33183428	0.2927786725349774
+own library, 75 nt	Uniquely mapped	ProcessedPseudogene	75022	33183428	0.22608273021099567
+own library, 75 nt	Uniquely mapped	TEC	63126	33183428	0.19023351053423412
+own library, 75 nt	Uniquely mapped	rRNA	52166	33183428	0.15720497592955135
+own library, 75 nt	Uniquely mapped	scaRNA	34981	33183428	0.1054170774640884
+own library, 75 nt	Uniquely mapped	TranscribedProcessedPseudogene	32419	33183428	0.09769635614500105
+own library, 75 nt	Uniquely mapped	TranscribedUnprocessedPseudogene	19564	33183428	0.058957139690329764
+own library, 75 nt	Uniquely mapped	MtRrna	10528	33183428	0.03172667995603107
+own library, 75 nt	Uniquely mapped	tRNA	8263	33183428	0.02490098370789178
+own library, 75 nt	Uniquely mapped	TranscribedUnitaryPseudogene	7184	33183428	0.021649360638689892
+own library, 75 nt	Uniquely mapped	UnprocessedPseudogene	3604	33183428	0.01086084294847416
+own library, 75 nt	Uniquely mapped	MtTrna	2953	33183428	0.008899020318214261
+own library, 75 nt	Uniquely mapped	UnitaryPseudogene	2674	33183428	0.008058239190960017
+own library, 75 nt	Uniquely mapped	TranslatedUnprocessedPseudogene	55	33183428	1.657453835089009e-4
+own library, 75 nt	Uniquely mapped	IgVGene	10	33183428	3.0135524274345615e-5
+own library, 75 nt	Uniquely mapped	TrVGene	8	33183428	2.4108419419476492e-5
+own library, 75 nt	Uniquely mapped	TrVPseudogene	8	33183428	2.4108419419476492e-5
+own library, 75 nt	Uniquely mapped	IgVPseudogene	7	33183428	2.1094866992041932e-5
+own library, 75 nt	Uniquely mapped	sRNA	6	33183428	1.808131456460737e-5
+own library, 75 nt	Uniquely mapped	TrCGene	5	33183428	1.5067762137172808e-5
+own library, 75 nt	Uniquely mapped	pseudogene	5	33183428	1.5067762137172808e-5
+own library, 75 nt	Uniquely mapped	TrJGene	4	33183428	1.2054209709738246e-5
+own library, 75 nt	Uniquely mapped	IgCGene	3	33183428	9.040657282303685e-6
+own library, 75 nt	Multi-mapped	ProteinCoding	17013063	22050456	77.1551527097671
+own library, 75 nt	Multi-mapped	lncRNA	15754431	22050456	71.44718911935426
+own library, 75 nt	Multi-mapped	MiscRna	4863203	22050456	22.05488630257805
+own library, 75 nt	Multi-mapped	snRNA	3561310	22050456	16.150731758109675
+own library, 75 nt	Multi-mapped	ProcessedPseudogene	2377223	22050456	10.780833738767125
+own library, 75 nt	Multi-mapped	miRNA	2155697	22050456	9.776201453611662
+own library, 75 nt	Multi-mapped	TranscribedProcessedPseudogene	1064156	22050456	4.826004505303654
+own library, 75 nt	Multi-mapped	snoRNA	765646	22050456	3.4722456533325206
+own library, 75 nt	Multi-mapped	UnprocessedPseudogene	230247	22050456	1.044182487654677
+own library, 75 nt	Multi-mapped	rRNA	179275	22050456	0.8130217352421193
+own library, 75 nt	Multi-mapped	TranscribedUnprocessedPseudogene	133598	22050456	0.6058740916741132
+own library, 75 nt	Multi-mapped	TranscribedUnitaryPseudogene	84397	22050456	0.3827449191980429
+own library, 75 nt	Multi-mapped	TEC	44660	22050456	0.20253549405055388
+own library, 75 nt	Multi-mapped	tRNA	18593	22050456	0.08432025169910319
+own library, 75 nt	Multi-mapped	UnitaryPseudogene	16808	22050456	0.07622518101212963
+own library, 75 nt	Multi-mapped	ribozyme	13992	22050456	0.06345447005721787
+own library, 75 nt	Multi-mapped	MtTrna	1827	22050456	0.008285542938431749
+own library, 75 nt	Multi-mapped	MtRrna	1020	22050456	0.004625754678270599
+own library, 75 nt	Multi-mapped	scaRNA	235	22050456	0.0010657375974446968
+own library, 75 nt	Multi-mapped	TrVGene	99	22050456	4.4897030700861697e-4
+own library, 75 nt	Multi-mapped	IgVGene	96	22050456	4.35365146190174e-4
+own library, 75 nt	Multi-mapped	IgVPseudogene	73	22050456	3.3105891324877816e-4
+own library, 75 nt	Multi-mapped	IgCGene	62	22050456	2.8117332358115407e-4
+own library, 75 nt	Multi-mapped	TranslatedUnprocessedPseudogene	60	22050456	2.7210321636885875e-4
+own library, 75 nt	Multi-mapped	TrCGene	49	22050456	2.2221762670123467e-4
+own library, 75 nt	Multi-mapped	TrVPseudogene	22	22050456	9.977117933524822e-5
+own library, 75 nt	Multi-mapped	pseudogene	7	22050456	3.174537524303352e-5
+own library, 75 nt	Multi-mapped	TrJGene	3	22050456	1.3605160818442938e-5
+own library, 75 nt	Multi-mapped	IgCPseudogene	2	22050456	9.070107212295292e-6
+own library, 75 nt	Multi-mapped	IgJGene	1	22050456	4.535053606147646e-6
+own library, 75 nt	Multi-mapped	IgLvGene	1	22050456	4.535053606147646e-6
+own library, 75 nt	Multi-mapped	TrDGene	1	22050456	4.535053606147646e-6
+own library, 75 nt	Multi-mapped	TrJPseudogene	1	22050456	4.535053606147646e-6
+published, mouse wells	Uniquely mapped	ProteinCoding	36443610	37622886	96.86553551473962
+published, mouse wells	Uniquely mapped	lncRNA	1140088	37622886	3.0303044800975663
+published, mouse wells	Uniquely mapped	ribozyme	161937	37622886	0.4304215258765635
+published, mouse wells	Uniquely mapped	snoRNA	109950	37622886	0.29224233356260865
+published, mouse wells	Uniquely mapped	ProcessedPseudogene	102998	37622886	0.27376421893844083
+published, mouse wells	Uniquely mapped	TEC	102044	37622886	0.2712285282952509
+published, mouse wells	Uniquely mapped	miRNA	49730	37622886	0.132180184157058
+published, mouse wells	Uniquely mapped	TranscribedUnprocessedPseudogene	28726	37622886	0.07635246270049564
+published, mouse wells	Uniquely mapped	TranscribedProcessedPseudogene	25312	37622886	0.06727819870065258
+published, mouse wells	Uniquely mapped	snRNA	18211	37622886	0.048404048535776865
+published, mouse wells	Uniquely mapped	TranscribedUnitaryPseudogene	17713	37622886	0.047080386124551954
+published, mouse wells	Uniquely mapped	UnprocessedPseudogene	15395	37622886	0.040919242612063304
+published, mouse wells	Uniquely mapped	MiscRna	13709	37622886	0.03643792770177173
+published, mouse wells	Uniquely mapped	scaRNA	8660	37622886	0.023017904580738435
+published, mouse wells	Uniquely mapped	PolymorphicPseudogene	7877	37622886	0.020936724524535412
+published, mouse wells	Uniquely mapped	tRNA	3165	37622886	0.008412432794230618
+published, mouse wells	Uniquely mapped	MtRrna	1802	37622886	0.004789637881580908
+published, mouse wells	Uniquely mapped	UnitaryPseudogene	1577	37622886	0.004191597635545556
+published, mouse wells	Uniquely mapped	MtTrna	1544	37622886	0.004103885066127038
+published, mouse wells	Uniquely mapped	rRNA	693	37622886	0.001841963957788884
+published, mouse wells	Uniquely mapped	pseudogene	537	37622886	0.0014273227205377067
+published, mouse wells	Uniquely mapped	IgVPseudogene	35	37622886	9.302848271661031e-5
+published, mouse wells	Uniquely mapped	IgVGene	16	37622886	4.252730638473614e-5
+published, mouse wells	Uniquely mapped	TrCGene	7	37622886	1.8605696543322063e-5
+published, mouse wells	Uniquely mapped	TrVGene	7	37622886	1.8605696543322063e-5
+published, mouse wells	Uniquely mapped	TrVPseudogene	5	37622886	1.3289783245230044e-5
+published, mouse wells	Uniquely mapped	IgCGene	2	37622886	5.315913298092017e-6
+published, mouse wells	Multi-mapped	ProteinCoding	4843351	5472612	88.50163322376956
+published, mouse wells	Multi-mapped	ProcessedPseudogene	1978447	5472612	36.15178638646409
+published, mouse wells	Multi-mapped	MiscRna	906844	5472612	16.570588230994634
+published, mouse wells	Multi-mapped	lncRNA	439874	5472612	8.037734083834192
+published, mouse wells	Multi-mapped	UnprocessedPseudogene	411318	5472612	7.515935717715782
+published, mouse wells	Multi-mapped	TranscribedProcessedPseudogene	282795	5472612	5.167459341170177
+published, mouse wells	Multi-mapped	miRNA	212013	5472612	3.874073294434175
+published, mouse wells	Multi-mapped	TranscribedUnprocessedPseudogene	122153	5472612	2.2320785760072157
+published, mouse wells	Multi-mapped	snoRNA	99831	5472612	1.8241929082492967
+published, mouse wells	Multi-mapped	snRNA	62907	5472612	1.1494876669495298
+published, mouse wells	Multi-mapped	TEC	16855	5472612	0.3079882147683775
+published, mouse wells	Multi-mapped	ribozyme	10978	5472612	0.20059890962487384
+published, mouse wells	Multi-mapped	TranscribedUnitaryPseudogene	5451	5472612	0.09960508802743553
+published, mouse wells	Multi-mapped	pseudogene	4851	5472612	0.08864140194846629
+published, mouse wells	Multi-mapped	tRNA	1357	5472612	0.024796203348602094
+published, mouse wells	Multi-mapped	UnitaryPseudogene	718	5472612	0.013119877674499856
+published, mouse wells	Multi-mapped	PolymorphicPseudogene	694	5472612	0.012681330231341086
+published, mouse wells	Multi-mapped	MtTrna	480	5472612	0.008770948863175391
+published, mouse wells	Multi-mapped	MtRrna	435	5472612	0.007948672407252697
+published, mouse wells	Multi-mapped	rRNA	101	5472612	0.001845553823293155
+published, mouse wells	Multi-mapped	TrVGene	43	5472612	7.857308356594621e-4
+published, mouse wells	Multi-mapped	TrVPseudogene	38	5472612	6.94366785001385e-4
+published, mouse wells	Multi-mapped	scaRNA	23	5472612	4.2027463302715413e-4
+published, mouse wells	Multi-mapped	IgVPseudogene	21	5472612	3.8372901276392335e-4
+published, mouse wells	Multi-mapped	IgCGene	19	5472612	3.471833925006925e-4
+published, mouse wells	Multi-mapped	IgVGene	15	5472612	2.74092151974231e-4
+published, mouse wells	Multi-mapped	TrCGene	11	5472612	2.0100091144776937e-4
+published, mouse wells	Multi-mapped	IgCPseudogene	2	5472612	3.6545620263230795e-5
+published, mouse wells	Multi-mapped	TrJGene	1	5472612	1.8272810131615398e-5

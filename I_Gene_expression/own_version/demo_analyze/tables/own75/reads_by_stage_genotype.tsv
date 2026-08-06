@@ -1,0 +1,17 @@
+genotype	stage	total_reads
+XY	Demultiplexed	31073873
+XY	After rRNA depletion	10806551
+XY	After trimming	14856474
+XY	Uniquely mapped	5813660
+XO	Demultiplexed	58676637
+XO	After rRNA depletion	21331377
+XO	After trimming	28755088
+XO	Uniquely mapped	12152682
+EpiLCs	Demultiplexed	99193935
+EpiLCs	After rRNA depletion	38137137
+EpiLCs	After trimming	52119135
+EpiLCs	Uniquely mapped	21885700
+Blank control	Demultiplexed	5048616
+Blank control	After rRNA depletion	977018
+Blank control	After trimming	1135948
+Blank control	Uniquely mapped	268915

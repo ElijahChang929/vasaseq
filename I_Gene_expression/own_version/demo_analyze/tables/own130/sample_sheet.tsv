@@ -1,0 +1,17 @@
+genotype	replicate	seq_no	barcode	cell	label
+XY	1	1	AGACTC	002	seq1 cell 002
+XY	2	2	AGCTAG	003	seq2 cell 003
+XY	3	3	AGCTCA	004	seq3 cell 004
+XY	4	4	AGCTTC	005	seq4 cell 005
+XO	1	5	CATGAG	007	seq5 cell 007
+XO	2	6	CATGCA	008	seq6 cell 008
+XO	3	7	CATGTC	009	seq7 cell 009
+XO	4	9	CAGATC	006	seq9 cell 006
+EpiLCs	1	10	TCACAG	013	seq10 cell 013
+EpiLCs	2	23	GTCTAG	010	seq23 cell 010
+EpiLCs	3	25	GTTGCA	012	seq25 cell 012
+EpiLCs	4	26	GTGACA	011	seq26 cell 011
+Blank control	1	31	ACTCGA	001	seq31 cell 001
+Blank control	2	46	TGCAGA	014	seq46 cell 014
+Blank control	3	47	TGTCAC	015	seq47 cell 015
+Blank control	4	48	TGTCGA	016	seq48 cell 016

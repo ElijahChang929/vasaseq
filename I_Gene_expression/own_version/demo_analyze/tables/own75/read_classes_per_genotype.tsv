@@ -1,0 +1,21 @@
+genotype	class	reads	pct
+XY	1 read-through, kept	1096671	3.529238212436538
+XY	2 insert too short	634453	2.041757073538918
+XY	3 pass 1 trimmed it short	568760	1.8303479582348812
+XY	4 pass 2 trimmed it short	15014186	48.31771694503611
+XY	5 no read-through, kept	13759803	44.28093981075355
+XO	1 read-through, kept	1758260	2.9965248349185383
+XO	2 insert too short	1524077	2.5974170946436486
+XO	3 pass 1 trimmed it short	1167961	1.99050432968747
+XO	4 pass 2 trimmed it short	27229511	46.406052548648965
+XO	5 no read-through, kept	26996828	46.00950119210138
+EpiLCs	1 read-through, kept	3752931	3.783427888005451
+EpiLCs	2 insert too short	2117715	2.1349238741259735
+EpiLCs	3 pass 1 trimmed it short	1930448	1.9461351140067182
+EpiLCs	4 pass 2 trimmed it short	43026637	43.37627799522219
+EpiLCs	5 no read-through, kept	48366204	48.759235128639666
+Blank control	1 read-through, kept	126735	2.510291929510979
+Blank control	2 insert too short	461103	9.133255529832335
+Blank control	3 pass 1 trimmed it short	90601	1.7945710269903672
+Blank control	4 pass 2 trimmed it short	3360964	66.57198725353642
+Blank control	5 no read-through, kept	1009213	19.989894260129905

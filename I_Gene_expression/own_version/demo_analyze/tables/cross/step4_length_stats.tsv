@@ -1,0 +1,10 @@
+dataset	category	n	mean	median	q1	q3
+own library, 130 nt	Uniquely mapped	42511694	114.1	129	110	130
+own library, 130 nt	Multi-mapped	21092590	94.7	110	68	130
+own library, 130 nt	Unmapped	9028116	89	91	64	128
+own library, 75 nt	Uniquely mapped	40120957	69.4	75	73	75
+own library, 75 nt	Multi-mapped	23961869	63	74	64	75
+own library, 75 nt	Unmapped	7169257	56.1	54	40	74
+published, mouse wells	Uniquely mapped	41975840	72.2	75	73	75
+published, mouse wells	Multi-mapped	7408561	66.8	74	72	75
+published, mouse wells	Unmapped	2724480	66	74	67	75

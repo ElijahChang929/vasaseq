@@ -1,0 +1,81 @@
+cell	class	reads	pct	genotype	replicate	seq_no
+001	1 read-through, kept	39303	3.4031	Blank control	1	31
+001	2 insert too short	76112	6.5903	Blank control	1	31
+001	3 pass 1 trimmed it short	17014	1.4732	Blank control	1	31
+001	4 pass 2 trimmed it short	738587	63.9519	Blank control	1	31
+001	5 no read-through, kept	283894	24.5815	Blank control	1	31
+002	1 read-through, kept	465920	8.6733	XY	1	1
+002	2 insert too short	75133	1.3986	XY	1	1
+002	3 pass 1 trimmed it short	102092	1.9005	XY	1	1
+002	4 pass 2 trimmed it short	2350403	43.7539	XY	1	1
+002	5 no read-through, kept	2378326	44.2737	XY	1	1
+003	1 read-through, kept	576938	5.5555	XY	2	2
+003	2 insert too short	287563	2.769	XY	2	2
+003	3 pass 1 trimmed it short	191597	1.8449	XY	2	2
+003	4 pass 2 trimmed it short	4843012	46.6345	XY	2	2
+003	5 no read-through, kept	4485934	43.1961	XY	2	2
+004	1 read-through, kept	608377	7.226	XY	3	3
+004	2 insert too short	165556	1.9664	XY	3	3
+004	3 pass 1 trimmed it short	168753	2.0044	XY	3	3
+004	4 pass 2 trimmed it short	4155168	49.3529	XY	3	3
+004	5 no read-through, kept	3321448	39.4504	XY	3	3
+005	1 read-through, kept	505176	7.3239	XY	4	4
+005	2 insert too short	106183	1.5394	XY	4	4
+005	3 pass 1 trimmed it short	136336	1.9766	XY	4	4
+005	4 pass 2 trimmed it short	3321965	48.1608	XY	4	4
+005	5 no read-through, kept	2827993	40.9994	XY	4	4
+006	1 read-through, kept	648199	6.1076	XO	4	9
+006	2 insert too short	267413	2.5197	XO	4	9
+006	3 pass 1 trimmed it short	208728	1.9667	XO	4	9
+006	4 pass 2 trimmed it short	4994935	47.064	XO	4	9
+006	5 no read-through, kept	4493797	42.3421	XO	4	9
+007	1 read-through, kept	1021549	5.1715	XO	1	5
+007	2 insert too short	626296	3.1705	XO	1	5
+007	3 pass 1 trimmed it short	400811	2.0291	XO	1	5
+007	4 pass 2 trimmed it short	8684105	43.9622	XO	1	5
+007	5 no read-through, kept	9020803	45.6667	XO	1	5
+008	1 read-through, kept	962572	7.53	XO	2	6
+008	2 insert too short	289553	2.2651	XO	2	6
+008	3 pass 1 trimmed it short	294872	2.3067	XO	2	6
+008	4 pass 2 trimmed it short	5893167	46.1008	XO	2	6
+008	5 no read-through, kept	5343070	41.7975	XO	2	6
+009	1 read-through, kept	815335	5.2512	XO	3	7
+009	2 insert too short	340782	2.1948	XO	3	7
+009	3 pass 1 trimmed it short	323894	2.086	XO	3	7
+009	4 pass 2 trimmed it short	7197470	46.3552	XO	3	7
+009	5 no read-through, kept	6849286	44.1128	XO	3	7
+010	1 read-through, kept	1313019	4.9381	EpiLCs	2	23
+010	2 insert too short	429942	1.617	EpiLCs	2	23
+010	3 pass 1 trimmed it short	479610	1.8037	EpiLCs	2	23
+010	4 pass 2 trimmed it short	11268947	42.381	EpiLCs	2	23
+010	5 no read-through, kept	13098101	49.2602	EpiLCs	2	23
+011	1 read-through, kept	1790552	6.3726	EpiLCs	4	26
+011	2 insert too short	733804	2.6116	EpiLCs	4	26
+011	3 pass 1 trimmed it short	609528	2.1693	EpiLCs	4	26
+011	4 pass 2 trimmed it short	11976815	42.6256	EpiLCs	4	26
+011	5 no read-through, kept	12986994	46.2209	EpiLCs	4	26
+012	1 read-through, kept	1687606	7.0876	EpiLCs	3	25
+012	2 insert too short	493253	2.0716	EpiLCs	3	25
+012	3 pass 1 trimmed it short	528626	2.2201	EpiLCs	3	25
+012	4 pass 2 trimmed it short	10703747	44.9537	EpiLCs	3	25
+012	5 no read-through, kept	10397360	43.667	EpiLCs	3	25
+013	1 read-through, kept	2052711	9.9184	EpiLCs	1	10
+013	2 insert too short	460659	2.2258	EpiLCs	1	10
+013	3 pass 1 trimmed it short	417230	2.016	EpiLCs	1	10
+013	4 pass 2 trimmed it short	8478118	40.9649	EpiLCs	1	10
+013	5 no read-through, kept	9287313	44.8749	EpiLCs	1	10
+014	1 read-through, kept	46900	3.235	Blank control	2	46
+014	2 insert too short	137353	9.4741	Blank control	2	46
+014	3 pass 1 trimmed it short	29643	2.0447	Blank control	2	46
+014	4 pass 2 trimmed it short	905528	62.4598	Blank control	2	46
+014	5 no read-through, kept	330354	22.7865	Blank control	2	46
+015	1 read-through, kept	51345	3.1274	Blank control	3	47
+015	2 insert too short	185053	11.2717	Blank control	3	47
+015	3 pass 1 trimmed it short	38180	2.3256	Blank control	3	47
+015	4 pass 2 trimmed it short	982927	59.8706	Blank control	3	47
+015	5 no read-through, kept	384248	23.4047	Blank control	3	47
+016	1 read-through, kept	16059	2.0019	Blank control	4	48
+016	2 insert too short	62554	7.798	Blank control	4	48
+016	3 pass 1 trimmed it short	10303	1.2844	Blank control	4	48
+016	4 pass 2 trimmed it short	528969	65.9418	Blank control	4	48
+016	5 no read-through, kept	184290	22.9738	Blank control	4	48

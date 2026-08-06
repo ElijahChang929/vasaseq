@@ -1,0 +1,16 @@
+biotype	dataset	crude	standardised	lengths
+snRNA	own library, 130 nt	3.9	5.2	61
+snRNA	own library, 75 nt	16.2	18	61
+snRNA	published, mouse wells	1.2	1.2	60
+miRNA	own library, 130 nt	8	14.2	61
+miRNA	own library, 75 nt	9.8	10.3	61
+miRNA	published, mouse wells	3.9	3.9	61
+snoRNA	own library, 130 nt	1.1	2.4	61
+snoRNA	own library, 75 nt	3.5	3.8	61
+snoRNA	published, mouse wells	1.8	1.8	61
+MiscRna	own library, 130 nt	8	14.8	61
+MiscRna	own library, 75 nt	22.1	24.6	61
+MiscRna	published, mouse wells	16.6	16.6	61
+ProcessedPseudogene	own library, 130 nt	5.2	7.9	61
+ProcessedPseudogene	own library, 75 nt	10.8	11.7	61
+ProcessedPseudogene	published, mouse wells	36.2	36.2	61

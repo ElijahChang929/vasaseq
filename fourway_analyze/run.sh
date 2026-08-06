@@ -48,12 +48,19 @@
 #
 #   export PLATE_CELLS=<...>/plate_e116/cells
 #   export FOURWAY_OUT=<...>/fourway_analyze_e116
+#   export MOUSECONTIG=''      # REQUIRED -- see below
 #   scripts/01_insilico_depletion.sh; sbatch ... scripts/0{2,3,4}_*; ...
 #   FOURWAY_OUT=$FOURWAY_OUT PLATE_CELLS=$PLATE_CELLS ./run.sh
 #
 # Scripts 01 and 02 score rRNA depletion, which is stage 3 and identical under
 # either annotation; 00b symlinks the stage-3 artefacts into the new cells dir
 # so they run unchanged rather than being special-cased.
+#
+# MOUSECONTIG='' is not optional. Script 04 restricts plate rows to `^GRCm38_`
+# because the E99 plate is on a mixed reference; the E116 plate is mouse-only
+# and its contigs are plain `1`, `2`, ..., so the default filter matches nothing
+# and discards all 173 wells. 04 now refuses to finish when a whole dataset ends
+# with zero BED reads, but the variable still has to be set.
 #
 # Layout: scripts/ code (numbered by run order), tables/ TSVs,
 # figures/<step>/ PNG+PDF. Everything below is seconds on the login node.

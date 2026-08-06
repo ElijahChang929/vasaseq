@@ -281,6 +281,22 @@ awk -F'\t' 'NR>1 && $5 + $13 > $4 { printf "  %s cell %s %s: bed_reads %d + offs
   || { echo "step-5 BED has more reads than STAR reported -- not trusting $TOT" >&2; exit 1; }
 echo "every cell's BED read count is within its STAR class total."
 
+# --- sanity: MOUSECONTIG must not have discarded a whole dataset ------------
+# The plate filter is a string match on the contig name, so it silently matches
+# NOTHING the moment the plate is re-mapped to a reference whose contigs are not
+# prefixed. That is not hypothetical: the E116 remap (2026-08-06) put the plate
+# on mouse-only GRCm39, whose contigs are plain `1`, `2`, ..., and the default
+# `^GRCm38_` threw away all 173 wells. Every table was still written, with zeros,
+# and the failure only surfaced 17 minutes later as `division by zero` inside an
+# awk summary -- which names neither the dataset nor the cause.
+awk -F'\t' 'NR>1 { t[$1 SUBSEP $3] += $4; s[$1 SUBSEP $3] += $5 }
+  END { for (i in t) if (t[i] > 0 && s[i] == 0) { split(i,a,SUBSEP)
+          printf "  %s / %s: STAR placed %d reads, none reached a gene\n", a[1], a[2], t[i]; bad++ }
+        exit (bad>0) }' "$TOT" \
+  || { echo "a whole dataset x class has zero BED reads. If that is the plate," >&2
+       echo "MOUSECONTIG=${MOUSECONTIG:-<unset>} matched no contig -- re-run with" >&2
+       echo "MOUSECONTIG='' when the plate is on a mouse-only reference." >&2; exit 1; }
+
 # --- sanity: the CIGAR-derived lengths against step 10's independent tally ---
 # scripts/10 reads length(SEQ) straight out of the BAM; this script rebuilds it
 # from the CIGAR two stages downstream. They must agree in the only way they
@@ -313,8 +329,11 @@ awk -F'\t' 'NR>1 { s[$1 SUBSEP $3] += $5; t[$1 SUBSEP $3] += $4; m[$1 SUBSEP $3]
                    r[$1 SUBSEP $3] += $6; e[$1 SUBSEP $3] += $9; o[$1 SUBSEP $3] += $13 }
   END { printf "%-24s %-7s %12s %12s %7s %8s %9s %7s %7s\n", "dataset","class","star_reads","bed_reads","pct","rows/read","%mixedBT","%exon","%offsp"
         for (i in s) { split(i,a,SUBSEP)
+          # Guarded: the check above already refuses to get here with s[i]==0,
+          # but a summary print must not be the thing that decides a run failed.
           printf "%-24s %-7s %12d %12d %6.1f%% %8.2f %8.1f%% %6.1f%% %6.1f%%\n", a[1], a[2], t[i], s[i],
-                 100*s[i]/t[i], r[i]/s[i], 100*m[i]/s[i], 100*e[i]/s[i], 100*o[i]/t[i] } }' "$TOT" | (read -r h; echo "$h"; sort)
+                 t[i] ? 100*s[i]/t[i] : 0, s[i] ? r[i]/s[i] : 0, s[i] ? 100*m[i]/s[i] : 0,
+                 s[i] ? 100*e[i]/s[i] : 0, t[i] ? 100*o[i]/t[i] : 0 } }' "$TOT" | (read -r h; echo "$h"; sort)
 
 echo
 echo "biotypes touched, % of that class's BED reads (top 12):"

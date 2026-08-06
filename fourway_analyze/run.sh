@@ -34,7 +34,10 @@
 #   sbatch -c 8  --mem=8G  -t 4:00:00 --wrap="scripts/02_probe_qc.sh"
 #   sbatch -c 16 --mem=8G  -t 120    --wrap="scripts/03_mapped_length_dist.sh"
 #   sbatch -c 16 --mem=64G -t 240    --wrap="scripts/04_step5_biotype.sh"
-#   sbatch -c 4  --mem=32G -t 240    --wrap="scripts/07_genebody_coverage.py"
+#   sbatch -c 4  --mem=8G  -t 240    --wrap="scripts/07_genebody_coverage.py"
+#     measured 29m10s, peak 190 MB -- it streams, so memory holds the gene models
+#     and 100 counters per gene and does not grow with read count. The 32G this
+#     was first submitted with was a guess; 8G is still ~40x the measurement.
 #
 # Layout: scripts/ code (numbered by run order), tables/ TSVs,
 # figures/<step>/ PNG+PDF. Everything below is seconds on the login node.

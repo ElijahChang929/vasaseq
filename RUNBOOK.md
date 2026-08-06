@@ -232,8 +232,12 @@ scripts/01_insilico_depletion.sh                          # 几秒，登录节�
 sbatch -c 8  --mem=8G  -t 4:00:00 --wrap="scripts/02_probe_qc.sh"
 sbatch -c 16 --mem=8G  -t 120    --wrap="scripts/03_mapped_length_dist.sh"
 sbatch -c 16 --mem=64G -t 240    --wrap="scripts/04_step5_biotype.sh"
+sbatch -c 4  --mem=8G  -t 240    --wrap="scripts/07_genebody_coverage.py"
+                                  # 实测 29m10s / 峰值 190 MB（首次跑申请了
+                                  # 32G，实测后降到 8G；内存跟数据量无关，
+                                  # 见 6.1 的"流式"一节）
 
-./run.sh                  # -> tables/ + figures/{01_reads,...,05_assign}/
+./run.sh                  # -> tables/ + figures/{01_reads,...,06_coverage}/
 ```
 
 先自检清单是否解析得出来（四个都要有数，`fs` 为 0 说明 map 还没跑完）：
@@ -242,6 +246,87 @@ source scripts/datasets.sh
 for k in $DS_KEYS; do printf '%-8s %-26s %s\n' "$k" "$(ds_label $k)" "$(ds_units $k | wc -l)"; done
 # own130 16 / own75 16 / plate 173 / fs 10
 ```
+
+### 6.1 gene body coverage 是怎么算出来的
+
+**输入是 step 5 的 BED，不是 BAM。** 常规做法是 RSeQC 的 `geneBody_coverage.py`，
+但它要 BED12 转录本模型 + **排序并建过索引的** BAM；我们的 BAM 是
+`--outSAMtype BAM Unsorted`，下游没有任何一步需要索引，用 RSeQC 就得先给 215 个
+unit 排序建索引。而 step 5 的 BED 里每条 read 已经带齐了所需的一切：
+
+```
+$ zcat ZHA9292A1_001_..._singlemappers_genes.bed.gz | sed -n 2p
+1  4854235  4855832  LH00442:...;CB:ACTCGA;RX:TCGCTG;SM:001  -  ENSMUSG00000033845_Mrpl15_ProteinCoding_exon  CG:93M1467N37M;nM:0;jS:5  4600  0.138473
+^chr  ^start    ^end                    ^read名（含标签）    ^链          ^基因_symbol_biotype_exon|intron        ^CIGAR
+```
+
+所以是一次流式扫描，**而且算的正好是这个文件夹其它脚本算的同一批 read**。
+
+四步：
+
+1. **建基因模型**（`load_models`）。从注释 BED 取所有 `*_ProteinCoding_exon` 行，
+   按基因取**外显子并集**（不同 isoform 重叠的外显子合并，一个碱基只数一次），
+   得到"成熟转录本"坐标系。只保留成熟长度 **1,000–15,000 nt** 的基因：更短的填不满
+   100 个 bin，更长的会被少数几个 isoform 主导。→ 约 19,500 个模型。
+
+2. **CIGAR → 参考区间**（`blocks_from_cigar`）。`M D = X` 消耗参考并产出区间，
+   **`N` 只推进坐标、不产出区间** —— 这一条是关键，否则跨内含子的剪接 read 会把
+   覆盖度一路涂满那 1,467 nt 的内含子。上面那条 `93M1467N37M` 从 4854235 起解析成
+   两段 `[4854235, 4854328)` 和 `[4855795, 4855832)`，末端正好等于 BED 第 3 列
+   4855832，产出的碱基数 93+37=130 = 这个库的读长。可以拿这行自己验一遍。
+
+3. **参考坐标 → 转录本坐标**（`to_transcript`），负链的 bin 翻转，落进 100 个
+   百分位 bin。
+
+4. **归一化再平均**。**每个基因先归一到总和为 1，然后才跨基因平均** —— 不这么做，
+   曲线就等于表达量最高的那几个基因的形状，而那几个基因在四个协议之间不一样，
+   看上去就会像位置偏好。所以 y 轴是**份额**，平坦 = 0.01。
+
+几个容易搞错、已经在脚本里处理掉的地方：
+
+- **去重**：bedtools 对一条 read × 每个重叠 feature 各输出一行。同一条 read 的行是
+  连续的，所以用 `key == prev_key` 跳过就够，否则一条横跨 3 个外显子的 read 会被数
+  3 次。"连续"不是假设：`04_step5_biotype.sh:177` 在运行时检查 read 名是否重新出现，
+  一旦不连续就 `exit 3`（cell 002 上 0 例）。
+- **四条曲线用的是同一批基因** —— 在每个数据集里都 ≥50 条 read 的交集，
+  **11,377 个**。用各自的基因集画图，等于把基因组成和位置偏好画在同一根轴上。
+- **各自用各自比对时的注释**：own130/own75/fs → GRCm39 E116，plate → mixed E99 的
+  `GRCm38_` contig。做一套共用模型意味着要在 plate 的 read 从未比对过的坐标系里
+  重推外显子结构。因为只比**相对位置 0–100%**，各用各的既正确也是唯一诚实的做法；
+  跨版本按 Ensembl gene id 匹配。
+- **流式**：内存只装基因模型和每基因 100 个计数，跟 read 数无关 —— 这就是为什么
+  扫完 FLASH-seq 的 1.79 亿条已归属 read（其中外显子 1.638 亿）峰值也只有 190 MB。
+
+**产出**：`tables/cross/genebody_coverage.tsv`（dataset × bin1–100）+ `genebody_qc.tsv`，
+`08_plot_genebody.R` 画成 `figures/06_coverage/` 下两张图。跑出来是：
+
+| dataset | 5' 前 10% | 3' 后 10% | 3'/5' |
+|---|---|---|---|
+| VASA own, 130 nt | 0.00938 | 0.00939 | **1.00** |
+| VASA own, 75 nt | 0.01025 | 0.00917 | 0.89 |
+| VASA published | 0.00849 | 0.00768 | 0.90 |
+| FLASH-seq | 0.00863 | 0.00780 | 0.90 |
+
+四条都是平的，**没有一个协议出现 3' 堆积** —— 包括最有可能出现的 FLASH-seq，而且
+它一路降到 30 pg 输入曲线依然不倾斜。唯一的形状差异是两条 own 曲线在转录本 5–15%
+处的凸起，plate 没有，所以那是我们这个库的特征，不是 VASA 协议的。
+
+**exon-only 是定义，被扔掉的部分要一起看。** 内含子 read 没有成熟转录本坐标，
+必然被排除，但四个数据集扔掉的比例差得极大，所以 `genebody_qc.tsv` 把它记下来，
+`08_plot_genebody.R` 单独画成一张图：
+
+| dataset | 内含子占比 |
+|---|---|
+| FLASH-seq | 8.48% |
+| VASA own 130 / 75 | 25.42% / 26.50% |
+| VASA published | 43.69% |
+
+这不是图注里的注意事项，这是结果本身 —— polyA 引物 vs 全 RNA 捕获。VASA 的卖点之一
+就是捕获未剪接 RNA，**已发表的 plate 比我们自己的库多捕获了近一倍**，值得追。
+
+**已知限制**（是输入的限制，不是偷懒）：union-exon 模型没有 isoform 分辨率，
+交替首/末外显子的基因会在轴上被抹平。step 5 的 BED 把 read 归给的是**基因**不是
+转录本，所以从这份输入里恢复不出 isoform —— 任何 union-exon 覆盖度图都是这个含义。
 
 ---
 

@@ -72,6 +72,14 @@ slurm-*.out
 *.err
 *.out
 
+# --- rendered docs: the HTML is tracked, its sidecar is not ----------------
+# quarto/rmarkdown write <name>.html next to a <name>_files/ directory holding a
+# private copy of bootstrap + popper + clipboard (~800 KB, identical in every
+# document). Render with `--embed-resources` instead and the HTML is standalone,
+# which is what the tracked II_Alternative_splicing/d_Analysis/*.nb.html already
+# are. Committing the sidecar would vendor the same three libraries once per doc.
+*_files/
+
 # --- editor / OS cruft -----------------------------------------------------
 .DS_Store
 *.swp

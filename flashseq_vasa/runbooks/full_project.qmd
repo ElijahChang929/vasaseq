@@ -690,7 +690,7 @@ Four decisions were put to the user rather than guessed, because each changes wh
 the numbers mean. Three became filters:
 
 ```bash
-own_version/make_analysis_matrix.py $OUT ZHA9292A1 001,014,015,016
+own_version/diagnostics/make_analysis_matrix.py $OUT ZHA9292A1 001,014,015,016
 ```
 
 | filter | why | user decision |

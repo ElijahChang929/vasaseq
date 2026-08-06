@@ -1,0 +1,5 @@
+dataset	units	probe_residual	reads_in	pct
+FLASH-seq	10	5416003	277420517	1.95
+VASA own, 130 nt	16	16392526	98274772	16.68
+VASA own, 75 nt	16	16255594	96866645	16.78
+VASA published, mouse	173	815730	59075010	1.38

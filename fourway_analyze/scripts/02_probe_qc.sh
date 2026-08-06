@@ -100,16 +100,16 @@ xargs -d '\n' -P "$NPAR" -I{} bash -c 'set -eo pipefail
 { printf 'dataset\tunit\tprobe_residual\treads_in\tpct\n'
   cat "$TMP"/p.* | awk -F'\t' '{printf "%s\t%s\t%d\t%d\t%.4f\n", $1,$2,$3,$4, ($4?100*$3/$4:0)}' \
     | sort -t$'\t' -k1,1 -k2,2
-} > tables/cross/probe_qc_per_unit.tsv
-echo "wrote tables/cross/probe_qc_per_unit.tsv"
+} > $OUTROOT/tables/cross/probe_qc_per_unit.tsv
+echo "wrote $OUTROOT/tables/cross/probe_qc_per_unit.tsv"
 
 # Pooled, not a mean of per-unit rates: units differ 20-60x in depth.
 { printf 'dataset\tunits\tprobe_residual\treads_in\tpct\n'
   awk -F'\t' 'NR>1 { n[$1]++; h[$1]+=$3; r[$1]+=$4; if(!($1 in s)){s[$1]=1; o[++k]=$1} }
     END { for(i=1;i<=k;i++){ d=o[i]
             printf "%s\t%d\t%d\t%d\t%.2f\n", d, n[d], h[d], r[d], 100*h[d]/r[d] } }' \
-    tables/cross/probe_qc_per_unit.tsv
-} > tables/cross/probe_qc.tsv
-echo "wrote tables/cross/probe_qc.tsv"
+    $OUTROOT/tables/cross/probe_qc_per_unit.tsv
+} > $OUTROOT/tables/cross/probe_qc.tsv
+echo "wrote $OUTROOT/tables/cross/probe_qc.tsv"
 echo
-column -t -s$'\t' tables/cross/probe_qc.tsv
+column -t -s$'\t' $OUTROOT/tables/cross/probe_qc.tsv

@@ -58,6 +58,9 @@ from bisect import bisect_right
 from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Products may go somewhere other than the checkout -- see datasets.sh's
+# OUTROOT. Same split for the same reason: ROOT still has to find datasets.sh.
+OUTROOT = os.environ.get("FOURWAY_OUT", ROOT)
 NBIN = 100
 MIN_EXONIC = 1000      # shorter genes cannot fill 100 bins meaningfully
 MAX_EXONIC = 15000     # very long genes are dominated by a few isoforms
@@ -279,7 +282,7 @@ def main():
         sys.stderr.write("too few shared genes -- refusing to write a curve\n")
         sys.exit(1)
 
-    tab = os.path.join(ROOT, "tables", "cross")
+    tab = os.path.join(OUTROOT, "tables", "cross")
     os.makedirs(tab, exist_ok=True)
     with open(os.path.join(tab, "genebody_coverage.tsv"), "w") as out:
         out.write("dataset\tbin\tcoverage\tgenes\n")

@@ -3,8 +3,13 @@
 # work from any working directory and moving the tree needs no edits.
 .self <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])
 ROOT <- normalizePath(file.path(dirname(.self), ".."))
-TAB  <- file.path(ROOT, "tables")
-FIG  <- file.path(ROOT, "figures")
+# Code root and product root are separate -- FOURWAY_OUT moves tables/ and
+# figures/ so the whole folder can be re-run against a different reference
+# (the E116-remapped plate) without a second copy of the scripts. See
+# scripts/datasets.sh, which does the same for the shell scanners.
+OUTROOT <- Sys.getenv("FOURWAY_OUT", unset = ROOT)
+TAB  <- file.path(OUTROOT, "tables")
+FIG  <- file.path(OUTROOT, "figures")
 
 VASA <- "/nemo/lab/turnerj/working/guangxin/vasaseq"
 # demo_analyze already resolves the VASA design xlsx into a sample sheet and the
@@ -28,7 +33,8 @@ DATASETS <- c("VASA own, 130 nt", "VASA own, 75 nt",
 # a figure group that failed to render.
 FIGDIR <- c(reads = "01_reads", rrna = "03_rrna",
             mapping = "04_mapping", assign = "05_assign",
-            coverage = "06_coverage")   # gene body coverage; no demo_analyze twin
+            coverage = "06_coverage",   # gene body coverage; no demo_analyze twin
+            saturation = "07_saturation")
 for (d in FIGDIR) dir.create(file.path(FIG, d), showWarnings = FALSE, recursive = TRUE)
 dir.create(file.path(TAB, "cross"), showWarnings = FALSE, recursive = TRUE)
 

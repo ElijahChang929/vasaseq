@@ -37,9 +37,9 @@ ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 cd "$ROOT"
 source scripts/datasets.sh
 
-mkdir -p tables/cross
-PER=tables/cross/insilico_depletion_per_unit.tsv
-AGG=tables/cross/insilico_depletion.tsv
+mkdir -p "$OUTROOT/tables/cross"
+PER=$OUTROOT/tables/cross/insilico_depletion_per_unit.tsv
+AGG=$OUTROOT/tables/cross/insilico_depletion.tsv
 
 printf 'dataset\tunit\treads_in\tribosomal\tto_star\tpct\n' > "$PER"
 missing=0

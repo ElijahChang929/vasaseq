@@ -50,9 +50,9 @@ source scripts/datasets.sh
 
 NPAR=${NPAR:-8}
 THREADS=${THREADS:-2}
-OUT=tables/cross/mapped_length_dist.tsv
-REC=tables/cross/step4_mapping.tsv
-mkdir -p tables/cross
+OUT=$OUTROOT/tables/cross/mapped_length_dist.tsv
+REC=$OUTROOT/tables/cross/step4_mapping.tsv
+mkdir -p "$OUTROOT/tables/cross"
 
 source /usr/share/lmod/lmod/init/bash
 export MODULEPATH=/camp/apps/eb/modules/all

@@ -124,11 +124,11 @@ MOUSECONTIG=${MOUSECONTIG-^GRCm38_}
 NPAR=${NPAR:-8}          # BEDs decompressed at once
 NGCAP=${NGCAP:-20}       # ngenes is capped here; STAR's own limit is 20 loci
 
-BIO=tables/cross/step5_biotype_per_cell.tsv
-NGN=tables/cross/step5_genes_per_read.tsv
-TOT=tables/cross/step5_assign_totals.tsv
-BLN=tables/cross/step5_biotype_by_length.tsv
-MLD=tables/cross/mapped_length_dist.tsv   # scripts/03, only for the cross-check
+BIO=$OUTROOT/tables/cross/step5_biotype_per_cell.tsv
+NGN=$OUTROOT/tables/cross/step5_genes_per_read.tsv
+TOT=$OUTROOT/tables/cross/step5_assign_totals.tsv
+BLN=$OUTROOT/tables/cross/step5_biotype_by_length.tsv
+MLD=$OUTROOT/tables/cross/mapped_length_dist.tsv   # scripts/03, only for the cross-check
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/s5bt.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT

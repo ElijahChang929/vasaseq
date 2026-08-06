@@ -38,6 +38,22 @@
 #     measured 29m10s, peak 190 MB -- it streams, so memory holds the gene models
 #     and 100 counters per gene and does not grow with read count. The 32G this
 #     was first submitted with was a guess; 8G is still ~40x the measurement.
+#   sbatch -c 4  --mem=16G -t 240    --wrap="scripts/09_saturation.py"
+#
+# THE SAME FOLDER, AGAINST THE E116-REMAPPED PLATE
+# -------------------------------------------------
+# scripts/00b_plate_e116.sh puts the published plate's 173 mouse wells on the
+# same reference as the other three. Nothing here is edited to use it -- two
+# env vars move the inputs and the products:
+#
+#   export PLATE_CELLS=<...>/plate_e116/cells
+#   export FOURWAY_OUT=<...>/fourway_analyze_e116
+#   scripts/01_insilico_depletion.sh; sbatch ... scripts/0{2,3,4}_*; ...
+#   FOURWAY_OUT=$FOURWAY_OUT PLATE_CELLS=$PLATE_CELLS ./run.sh
+#
+# Scripts 01 and 02 score rRNA depletion, which is stage 3 and identical under
+# either annotation; 00b symlinks the stage-3 artefacts into the new cells dir
+# so they run unchanged rather than being special-cased.
 #
 # Layout: scripts/ code (numbered by run order), tables/ TSVs,
 # figures/<step>/ PNG+PDF. Everything below is seconds on the login node.
@@ -48,8 +64,9 @@ S=scripts
 
 step() { printf '\n=== [%s] %s ===\n' "$1" "$2"; }
 units() { step 5 "build_units.R -- one row per unit, four datasets"; "$R" $S/05_build_units.R; }
-plots() { step 6 "plot_fourway.R  -- every cross-dataset figure";    "$R" $S/06_plot_fourway.R
-          step 8 "plot_genebody.R -- gene body coverage 5'->3'";     "$R" $S/08_plot_genebody.R; }
+plots() { step 6  "plot_fourway.R    -- every cross-dataset figure"; "$R" $S/06_plot_fourway.R
+          step 8  "plot_genebody.R   -- gene body coverage 5'->3'";  "$R" $S/08_plot_genebody.R
+          step 10 "plot_saturation.R -- genes vs depth";             "$R" $S/10_plot_saturation.R; }
 
 case "${1:-all}" in
   units) units ;;

@@ -32,7 +32,12 @@
 VASA=/nemo/lab/turnerj/working/guangxin/vasaseq
 OWN130_CELLS=$VASA/data/PM26037/out/cells
 OWN75_CELLS=$VASA/data/PM26037/out75/cells
-PLATE_CELLS=$VASA/data/ref/fastq_vasaplate/vasaplate_out_v3
+# Overridable so the whole folder can be re-run against the E116-remapped plate
+# (scripts/00b_plate_e116.sh) without editing a line:
+#   PLATE_CELLS=.../plate_e116/cells FOURWAY_OUT=.../fourway_e116 ./run.sh
+# The default stays the E99 run, so a bare invocation still reproduces the
+# original comparison rather than silently changing reference under someone.
+PLATE_CELLS=${PLATE_CELLS:-$VASA/data/ref/fastq_vasaplate/vasaplate_out_v3}
 FS_CELLS=$VASA/data/flashseq_vasa/run/nonribo/cells
 PERCELL=$VASA/res/vasaplate/per_cell.tsv
 
@@ -41,6 +46,13 @@ PERCELL=$VASA/res/vasaplate/per_cell.tsv
 # here too so the two folders' plate rows are the same reads.
 PSOURCE=${PSOURCE:-ours_v3}
 PRULE=${PRULE:-call_fig1d}
+
+# Where products go. Code root and product root are SEPARATE: every scanner
+# does `cd "$ROOT"; source scripts/datasets.sh`, so ROOT has to stay the code
+# checkout or the source line breaks. FOURWAY_OUT moves only tables/ and
+# figures/, which is what a re-run against a different reference needs.
+OUTROOT=${FOURWAY_OUT:-${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}
+mkdir -p "$OUTROOT/tables/cross"
 
 DS_KEYS="own130 own75 plate fs"
 

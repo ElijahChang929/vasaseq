@@ -1,0 +1,7 @@
+probe_target,residual_reads,pct_of_probe_residual,addressable_bp,n_intervals,mean_interval_bp,reads_per_kb,inflation,reads_per_kb_corrected,pct_probe_footprint_vs_full
+probe_28S,9744456,78.12,4211,9,468.0,2314048,1.161,1993151,89.0
+probe_5.8S,388720,3.12,344,3,115.0,1130000,1.657,681955,76.8
+probe_18S,2092300,16.77,3718,3,1239.0,562749,1.061,530395,100.0
+probe_mt16S,189587,1.52,452,3,151.0,419440,1.5,279627,28.6
+probe_mt12S,57958,0.46,346,4,86.0,167509,1.879,89148,36.2
+probe_5S,681,0.01,14313,151,95.0,48,1.795,27,36.2

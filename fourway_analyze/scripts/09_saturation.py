@@ -67,7 +67,15 @@ MIN_CELLS = 3          # below this a mean is not worth drawing
 
 
 def sh(cmd):
-    return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout
+    # NOT subprocess.run(capture_output=...): that keyword is Python 3.7+, and
+    # the default python3 on the compute nodes is 3.6. Both scanners died on it
+    # at 00:00 on 2026-08-06 (jobs 51392134/51392135) despite an identical
+    # earlier run passing, because the interpreter the shebang resolves to
+    # depends on which PATH the job inherited. stdout=PIPE works on both.
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, universal_newlines=True)
+    out, _ = p.communicate()
+    return out
 
 
 def gene_counts(bed):

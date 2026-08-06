@@ -13,8 +13,12 @@ The 3' construct is
 
 and after step 1 both the cell barcode and the UMI are on the read name
 (CB: and RX:). So for THIS read the 12 nt that follow the poly-A are known
-exactly -- not a pattern, a literal string. Find it, throw away everything from
-there to the 3' end, then walk back over the poly-A that precedes it.
+exactly -- not a pattern, a literal string. Find it and throw away everything
+from there to the 3' end.
+
+The poly-A that precedes it is deliberately LEFT IN PLACE. Cutting at the anchor
+turns that poly-A into a clean 3' suffix, which is exactly the case cutadapt's
+--poly-a handles in pass 2, so there is nothing here worth duplicating.
 
 Why not just do this in cutadapt
 --------------------------------
@@ -28,10 +32,22 @@ about 2 expected false hits per 300,000 reads.
 
 What it does NOT do
 -------------------
-No quality trimming, no adapter trimming, no length filtering. Reads with no
-anchor pass through untouched. This runs BEFORE TrimGalore and the regular
-cutadapt pass, which still handle everything else -- there is one place that
-decides minimum length and it is not here.
+No quality trimming, no adapter trimming, no length filtering, and no poly-A
+trimming. Reads with no anchor pass through untouched. This runs BEFORE
+TrimGalore and the regular cutadapt pass, which still handle everything else --
+there is one place that decides minimum length and it is not here, and there is
+one place that decides where poly-A ends and it is not here either.
+
+It used to strip poly-A as well, via a local reimplementation of cutadapt's
+scorer. That was removed on 2026-08-03: it duplicated pass 2, and it copied only
+half the algorithm. cutadapt scores each suffix (+1 per A, -2 per non-A) AND
+"exclude[s] all suffixes ... that have more than 20% non-A"; the local copy had
+the scoring but not the 20% rule, and scoring alone permits up to 33% non-A. On
+400,000 reads of cell 011 the two agreed 99.910% of the time, and all 106
+disagreements were this file over-trimming, by 24 nt on average -- worst cases
+89->3 and 126->49 nt. Removing it raised protein-coding exonic reads in both a
+real and a blank cell while holding the in-annotation fraction exactly.
+See trimtest/README.md "Round 13" and trimtest/bench_trim13.sh.
 """
 import argparse
 import gzip
@@ -91,23 +107,6 @@ def find_anchor(seq, anchor, max_mm=1, min_partial=4):
     return -1
 
 
-def strip_polya(seq, min_run=3):
-    """Remove a trailing poly-A run, tolerating sequencing errors.
-
-    Scored like cutadapt's poly-A trimmer: walking left from the 3' end, +1 for
-    an A and -2 for anything else, cut at the best score. That way a run of 20 A
-    with one miscalled base is still removed whole, while a genuine A-ending
-    coding sequence is left alone.
-    """
-    best = score = 0
-    cut = len(seq)
-    for i in range(len(seq) - 1, -1, -1):
-        score += 1 if seq[i] == "A" else -2
-        if score > best:
-            best, cut = score, i
-    return seq[:cut] if len(seq) - cut >= min_run else seq
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("infile")
@@ -119,7 +118,7 @@ def main():
                     help="shortest anchor prefix accepted at the read end")
     a = ap.parse_args()
 
-    n = hit = exact = polya = 0
+    n = hit = exact = 0
     lost = 0
     with _open(a.infile, "rt") as fi, _open(a.outfile, "wt") as fo:
         while True:
@@ -142,15 +141,12 @@ def main():
                         exact += 1
                     lost += len(seq) - p
                     seq, qual = seq[:p], qual[:p]
-                    t = strip_polya(seq)
-                    if len(t) != len(seq):
-                        polya += 1
-                        seq, qual = t, qual[:len(t)]
             fo.write(f"{name}{seq}\n{plus}{qual}\n")
 
+    # NB step2_report.py parses `reads`, `anchor found` and `of which exact`.
+    # The old `poly-A also stripped` line went with strip_polya; nothing read it.
     msg = (f"reads {n}\n"
            f"anchor found {hit} ({hit/n:.2%} of reads), of which exact {exact}\n"
-           f"poly-A also stripped {polya} ({polya/n:.2%})\n"
            f"bases removed at the anchor {lost}\n")
     sys.stderr.write(msg)
     if a.log:

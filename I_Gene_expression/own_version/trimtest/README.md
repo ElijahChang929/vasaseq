@@ -41,6 +41,8 @@ than round 5 and is still the better one.
 | `bench_trim9.sh` | round 9: sweep how much adapter the cutadapt anchor carries |
 | `bench_trim10.sh` | round 10: do the anchor in python instead. **v26 = adopted** |
 | `bench_trim11.sh` | round 11: sweep the minimum-length floor (20 is a shallow optimum) |
+| `bench_trim12.sh` | round 12: `--nextseq-trim` vs the poly-G adapter, against **current** production. **Rejected** |
+| `bench_trim13.sh` | round 13: does pass 0 need its own poly-A trimmer? **No — remove `strip_polya`** |
 | `annot_fraction.sh` | where alignments land in the annotation — **the metric that decides** |
 | `bench_bam.sh` | re-maps selected variants keeping the BAM |
 | `aligned_composition.py` | poly-A-only / short / soft-clip breakdown from those BAMs |
@@ -67,6 +69,97 @@ than round 5 and is still the better one.
 | **v26** | **`../trim_bc_anchor.py` pass 0 + cutadapt without the anchor pattern — what `trim.sh` runs** |
 | M12…M30 | v26 at minimum-length floors of 12/15/18/20/25/30 (**M20 = adopted**) |
 | v27 | v26 keeping the cutadapt anchor as well — adds nothing, hence deleted |
+| G0–G3 | round 12: poly-G by `--nextseq-trim` instead of the `G{20}` adapter — **all rejected**, see below |
+
+## Round 12 — `--nextseq-trim` is the documented tool, and it is still wrong here
+
+cutadapt documents `--nextseq-trim` as the way to handle two-colour chemistry,
+where "basecalls without any signal are called as high-quality G bases", and
+this **is** a two-colour run (flowcell LH00442 = NovaSeq X Plus). The artefact
+is real and `-q 20` provably cannot reach it: of the reads in cell 011 ending in
+a run of ≥10 G, **75% have mean Phred ≥ 25**.
+
+It was still rejected, because the reads it removes are mostly not that artefact.
+
+| variant | second pass |
+|---|---|
+| G0 | current production, unchanged — the baseline |
+| G1 | G0 + `--nextseq-trim=20` |
+| G2 | G1 with `-a polyG` removed |
+| G3 | pass 1 `trim_galore --2colour 20` instead of `-q 20`, pass 2 unchanged |
+
+cell 011 (real) / cell 016 (blank), uniquely mapped → in annotation → protein-coding exonic:
+
+| | uniq 011 | exonPC 011 | uniq 016 | exonPC 016 |
+|---|---:|---:|---:|---:|
+| **G0** | **73,304** | **40,680 (55.5%)** | **13,930** | **3,190 (22.9%)** |
+| G1 | 73,094 | 40,632 (55.6%) | 13,497 | 3,167 (23.5%) |
+| G2 | 73,097 | 40,634 (55.6%) | 13,503 | 3,169 (23.5%) |
+| G3 | 73,227 | 40,655 (55.5%) | 13,791 | 3,160 (22.9%) |
+
+**Every variant loses protein-coding exonic reads** (−48, −46, −25 on cell 011)
+and the fraction does not move to pay for it: in-annotation is 87.2% for G0, G1
+and G2 alike, exonic 55.5% → 55.6%. By the round-7 rule — a variant whose extra
+reads are junk *dilutes* the fraction — G0's extra reads are not junk, so
+`--nextseq-trim` is deleting legitimate data.
+
+Supporting measurement, on 200,000 reads of cell 011: `--nextseq-trim=20` drops
+~1,970 reads that G0 keeps, and those reads are **not** poly-G — 4% are ≥50% G,
+none ≥80%. It is behaving as general quality trimming, not as poly-G removal.
+
+Two things worth keeping from round 12 even though the answer was no:
+
+- Poly-G is genuinely marginal here — 0.217% of reads end in ≥10 G, and the
+  `G{20}` adapter accounts for only 506 reads per 200,000 (0.25%).
+- Once `--nextseq-trim` is on, `-a polyG` is redundant (G1 vs G2 differ by 3
+  uniquely mapped reads). That matters only if a future library makes
+  `--nextseq-trim` worth adopting — then drop the adapter rather than keep both.
+
+## Round 13 — pass 0's `strip_polya` is redundant *and* subtly wrong: remove it
+
+`trim_bc_anchor.py` cuts at the barcode anchor and then walks back over the
+poly-A itself, via `strip_polya()`. Pass 2's `--poly-a` does the same job. The
+overlap is real — and pass 0's copy is the weaker implementation.
+
+**The defect is one missing rule.** cutadapt's algorithm is (a) score each
+suffix +1 per A, −2 per non-A and take the max, *and* (b) "exclude all suffixes
+from consideration that have more than 20% non-A". `strip_polya()` implements
+(a) only. Scoring alone permits up to 33% non-A (a suffix of *a* A's and *b*
+non-A's scores `a−2b`, positive iff `b/(a+b) < 1/3`), so between 20% and 33% the
+two disagree and pass 0 eats sequence cutadapt would keep. On 400,000 reads of
+cell 011 (118,163 anchor hits): **99.910% identical, 106 disagreements, and all
+106 are pass 0 over-trimming**, mean 24 nt — worst cases 89→3, 126→49, 125→59 nt.
+
+Not dead code either: `strip_polya` fires on ~97% of anchor hits, 24.5% of all
+reads library-wide.
+
+| variant | pass 0 |
+|---|---|
+| S0 | current, `strip_polya` as written — the baseline |
+| S1 | `strip_polya` **removed**; pass 2's `--poly-a` does it |
+| S2 | `strip_polya` **fixed** (20% non-A guard added), kept |
+
+| | uniq 011 | exonPC 011 | uniq 016 | exonPC 016 |
+|---|---:|---:|---:|---:|
+| S0 | 73,304 | 40,680 (55.5%) | 13,930 | 3,190 (22.9%) |
+| **S1** | **73,450** | **40,704 (55.4%)** | 13,908 | **3,201 (23.0%)** |
+| S2 | 73,319 | 40,682 (55.5%) | 13,931 | 3,190 (22.9%) |
+
+**S1 wins on the decision metric in both cells** (+24 and +11 protein-coding
+exonic reads) while in-annotation holds exactly — 87.2% and 75.3% for every
+variant. Cell 016 shows the ideal signature: uniquely mapped goes *down* 22
+while exonic goes *up* 11, i.e. junk alignments traded for real ones.
+
+**S2 recovers almost nothing** (+2 exonic on 011, 0 on 016; it changes 36 reads
+per 300,000). So the guard is not the real story — the function is simply
+redundant, and pass 2 additionally gets to decide *after* TrimGalore's quality
+trim, which is the better place to decide.
+
+The effect is small (+0.06% exonic). The case for removing it is correctness and
+one less reimplementation of a reference algorithm, not yield.
+
+Safe to remove: nothing parses the `poly-A also stripped` log line —
+`step2_report.py` reads only `reads`, `anchor found` and `of which exact`.
 
 ## Rebuilding the inputs
 

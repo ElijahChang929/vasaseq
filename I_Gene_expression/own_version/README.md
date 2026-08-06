@@ -18,7 +18,7 @@ Files here:
 | `step2_report.py` | Per-cell trimming table, written by step 2 itself. |
 | `step3_report.py` | Per-cell rRNA table, written by step 3 itself. |
 | `step7_precheck.py` | Read-only. Replays step 7's own string ops over every
-index label before the long job is submitted. See `SESSION_2026-07-28.md`. |
+index label before the long job is submitted. See `docs/SESSION_2026-07-28.md`. |
 | `step7_report.py` | Per-cell count-table QC + integrity checks, written after step 7. |
 | `build_rrna_reference.sh` | Builds the rRNA fasta. See "Step 3" and "Reference". |
 | `bc_PM26037_6nt.tsv` | Cell-barcode whitelist for this library (16 × 6 nt). |
@@ -220,6 +220,106 @@ Step 4's throwaway files go to `$SCRATCH` (lab scratch by default), not
 `$OUTDIR` — they are only the logs STAR insists on writing for its
 `--genomeLoad LoadAndExit` / `Remove` calls. Nothing downstream reads
 `$SCRATCH`; delete it whenever you like.
+
+### Looking at individual reads — `diagnostics/trimview.py`
+
+`step2_report.py` / `step3_report.py` give the per-cell totals. `diagnostics/trimview.py`
+answers the other question: *what happened to this particular read*. It shows
+one read across all four per-cell FASTQs at once, aligned in the coordinate
+frame of the untrimmed read, so the bases each stage removed stay on screen as
+dim lower-case instead of vanishing.
+
+Run it on an interactive node (it is a pager, not a batch job). There is a
+`trimview` symlink in `$OUTDIR/cells`, so:
+
+```bash
+cd data/PM26037/out/cells
+./trimview --list           # which cells exist
+./trimview 002              # interactive, 3 reads a page
+./trimview 002 --dropped    # only reads something threw away
+./trimview 002 --genes      # + which gene step 5 assigned the read to
+./trimview 002 --stats 100000
+```
+
+Keys inside: Enter next page, `n5` five at a time, `s1000` skip, `f<text>` find
+a read name (forward only), `d` dropped-only, `t` changed-only, `c003` switch
+cell, `q` quit.
+
+Above each read runs a feature track marking the technical parts of it:
+
+```
+   found: anchor rc(CBC)+rc(UMI) at 42 (exact); poly-A 25 nt before it; adapter at 54 (40 of 40 nt, 1 mismatch); Illumina tail from 94: rc(Read1 primer) + i5 index 10 nt + rc(P5)
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~CCCCCCUUUUUU========================================+++++++++++++++++++++++++++++++++++++
+   cbc       TCGAAGACGATCAGACAAAAAAAAAAAAAAAAAAAAAAAAAGAGTCTGACGAAGATCGTCGGACTGTAGAACTCCTGTCTCTTATACCCATCTGACGCTGCCGACGAGTCGTGAAGCGTGTAGATCTCGG
+```
+
+`C` cell barcode (reverse video in the sequence itself), `U` UMI (underlined),
+`~` the poly-A that pass 0 walks back over. Because the barcode and the UMI are
+on the read name, their position is *known*, not guessed — and the anchor is
+located by importing `trim_bc_anchor.py`'s own `find_anchor()` and
+`strip_polya()`, so what you see marked is what pass 0 actually searched for,
+including the 1-mismatch and truncated-at-the-read-end cases. Lower-case `c`/`u`
+means a lone barcode or UMI hit with no anchor around it, which a 6-mer can also
+produce by chance.
+
+Everything downstream of the anchor is adapter, and all of it is marked — struck
+through in the sequence rows, not only on the track:
+
+- `=` the read-through adapter (`config.sh`'s `TRIM_ADAPTER3`; `--adapter` to
+  change it). Matched the way cutadapt's `-a` matches: whole anywhere in the
+  read, or a prefix of it flush with the 3' end, with `0.1 × length` mismatches
+  allowed. The mismatch tolerance is what makes it stop at 40 of 40 rather than
+  34 of 40 — one miscall inside the adapter used to end the match there and the
+  rest was drawn as if it were insert.
+- `:` an adapter cut short by the read end (< 8 nt). Too short to call on its
+  own, so it is only marked when it sits *immediately* behind the anchor, where
+  the adapter is what has to come next.
+- `+` the rest of the P5 arm, which `TRIM_ADAPTER3` stops short of:
+  `rc(Read1 primer)` + `rc(i5 index)` + `rc(P5)`. Measured over the first
+  400,000 reads of cell 002 — 54,860 reach the adapter, and the 53 nt behind it
+  are one fixed sequence, 82% pure at the worst column and 95% at the median
+  (on ≥15,457 reads per column). The two primer literals are constant for any
+  Illumina library; the 10 nt index between them is found as the gap, so nothing
+  library-specific is hard-coded. 18.9% of reads reach it.
+- A stock TrimGalore adapter (TruSeq / Nextera / smallRNA) is marked too, where
+  the construct above did not already explain it — 0.5% of reads, because
+  Nextera *is* nt 22–40 of `TRIM_ADAPTER3`, which is why pass 1 auto-detects it
+  (30.9% of cell 002; see its `_trimming_report.txt`). `--adapter ''` shows just
+  those.
+
+The per-stage summary line names a cut by what the track says it covered
+(`-27 3' (poly-A + barcode)`, `-23 3' (poly-A + barcode + UMI + adapter)`) and
+falls back to guessing from the fragment only when the window is unmarked.
+
+Reverse-orientation reads are called out separately: they carry the same
+construct revcomp'd, so they *start* with `[UMI][CBC][poly-T]` instead of ending
+with the anchor, and the track labels them `read is in the reverse orientation`.
+The adapter is searched revcomp'd for those.
+
+Two implementation facts worth knowing before changing it:
+
+- **`_cbc`, `_cbc_trimmed` and `_cbc_trimmed_homoATCG` are in identical read
+  order** (checked over the first 200k reads of cell 001: every downstream read
+  appears in the upstream file, monotonically). The three are therefore streamed
+  together as a merge join — constant memory, and paging forward is instant.
+  **`nonRibo` is not**: `riboread-selection.py` writes it out of a name-sorted
+  BAM, so its order differs, and presence there is answered from a sorted array
+  of 64-bit name hashes built once per cell and cached in `~/.cache/trimview`
+  (0.9 s for cell 001's 255k reads).
+- Placing the child read inside its parent is done by matching **sequence and
+  quality together**. Sequence alone is not enough on this library: a poly-T
+  read matches its poly-T parent at a dozen offsets, and the quality string is
+  what disambiguates.
+
+Validated against ground truth, twice:
+
+- on cell 001 the per-stage read counts it reports over the whole file
+  (1,154,910 → 834,903 → 284,597 → 254,728) are exactly the
+  `pigz -dc | wc -l` counts of the four files;
+- on the first 2,000 reads of cell 002 it marks an anchor on 572 reads, and
+  running `trim_bc_anchor.py` itself on that same slice reports
+  `anchor found 572`. (That slice is not representative of the library —
+  28.60% here against 23.78% whole-file in `*_bcanchor.log`.)
 
 ---
 
@@ -986,7 +1086,7 @@ reads none of those three columns.
 > unrun stage: job `50911069`, 31m59s, MaxRSS 13.0 GB, exit 0, 20 tables in
 > `$OUTDIR`, tRNA non-empty for the first time. **The full record, the per-cell
 > numbers and the two artefacts to drop before analysis are in
-> [`SESSION_2026-07-28.md`](SESSION_2026-07-28.md) — read that first.**
+> [`docs/SESSION_2026-07-28.md`](docs/SESSION_2026-07-28.md) — read that first.**
 >
 > Everything below this box was written on 2026-07-27 and parts of it are
 > **superseded**; each such part is now marked inline. It is kept because the
@@ -1347,7 +1447,7 @@ steps 1–4 are unaffected.
 > result as `50911069`. `50804554` was the **v1** step 5 and is superseded.
 
 **Steps 1–7 are all done and verified.** See the box at the top of "Where this
-stands" and `SESSION_2026-07-28.md`.
+stands" and `docs/SESSION_2026-07-28.md`.
 
 **The standing check after any stage** — cheap, and it is the one that caught
 the stale-input run:

@@ -146,9 +146,24 @@ TRIM_ADAPTER3="${TRIM_ADAPTER3:-GATCGTCGGACTGTAGAACTCCTGTCTCTTATACACATCT}"
 # go away -- and it is what makes the blank barcodes look blank again.
 [ -n "${TRIM_POLYT5+x}" ] || TRIM_POLYT5='T{20}'
 
-# Reads shorter than this after trimming are dropped. Upstream used 15; 20 is
-# about the shortest that still maps somewhere believable.
-TRIM_MINLEN="${TRIM_MINLEN:-20}"
+# Reads shorter than this after trimming are dropped. Reaches BOTH passes --
+# trim_galore --length and cutadapt -m -- so there is one floor, not two.
+#
+# Set to 15 on 2026-08-03 to match the published pipeline. This is a deliberate
+# trade of purity for yield, and round 11 measured the price on cell 011:
+#
+#            uniq     exonPC   exonPC%
+#   m=15   75,909     40,938     53.9%
+#   m=20   73,369     40,684     55.5%
+#
+# i.e. 15 admits 2,540 more uniquely mapped reads, of which only 254 (10%) land
+# in a protein-coding exon, so the exonic fraction drops 1.6 pp. Two independent
+# reasons it reads as dilution rather than gain: a random 15-mer is expected
+# ~2.5 times in a 2.7 Gb genome (a 20-mer, 0.0025 times), so 15 nt is below
+# where unique placement starts; and bwa mem will not report an alignment
+# scoring under 30, so step 3 cannot see these reads at all except via bwa aln.
+# See trimtest/README.md round 11 (M12..M30) before changing it back.
+TRIM_MINLEN="${TRIM_MINLEN:-15}"
 
 # Anchor the trim on the cell barcode (pass 0, trim_bc_anchor.py). The 3' tail
 # does not have to be recognised by its shape: step 1 already put the barcode

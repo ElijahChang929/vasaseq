@@ -6,10 +6,15 @@ Per-cell summary of what step 2 did. pipeline.sh runs this at the end of step2,
 so the table lands in the step log; run it by hand any time afterwards to get
 the same numbers back.
 
-It reads two files per cell, both already written by the run:
+It reads these per cell, all already written by the run:
 
-  <CELLDIR>/<sample>_<cell>_cbc_bcanchor.log   trim_bc_anchor.py --log (pass 0)
-  <LOGDIR>/step2_<sample>_<cell>.log           trim.sh's stdout (passes 1 and 2)
+  <CELLDIR>/<sample>_<cell>_cbc_bcanchor.log    trim_bc_anchor.py --log (pass 0)
+  <CELLDIR>/<sample>_<cell>_cbc_cutadapt.json   pass 2's --json report
+  <LOGDIR>/step2_<sample>_<cell>.log            trim.sh's stdout (passes 1 and 2)
+
+The JSON is preferred for pass 2's in/kept because it is keyed rather than
+scraped; the log is the fallback, so cells trimmed before --json was added
+(2026-08-03) still report identically.
 
 Columns, and why there are two filters rather than one:
 
@@ -30,6 +35,7 @@ their own barcode and more of them fall under the length floor once cleaned.
 """
 import glob
 import os
+import json
 import re
 import sys
 
@@ -49,9 +55,24 @@ def main():
         anc = int(re.search(r"anchor found (\d+)", t).group(1))
         exact = int(re.search(r"of which exact (\d+)", t).group(1))
 
-        step_log = os.path.join(logdir, f"step2_{base}.log")
+        # Pass 2's own numbers. Prefer the JSON report trim.sh now asks cutadapt
+        # for: it is keyed, so it does not care how either tool words its output.
+        # Fall back to scraping the text log for cells trimmed before --json was
+        # added, so old runs still report.
         tg_in = kept = None
-        if os.path.exists(step_log):
+        cut_json = os.path.join(celldir, f"{base}_cbc_cutadapt.json")
+        if os.path.exists(cut_json):
+            try:
+                with open(cut_json) as fh:
+                    j = json.load(fh)
+                tg_in = j["read_counts"]["input"]
+                kept = j["read_counts"]["output"]
+            except (ValueError, KeyError) as e:
+                print(f"# warning: {cut_json} unreadable ({e}), falling back to log",
+                      file=sys.stderr)
+
+        step_log = os.path.join(logdir, f"step2_{base}.log")
+        if tg_in is None and os.path.exists(step_log):
             body = open(step_log, errors="replace").read()
             # "Total reads processed" appears once per cutadapt invocation:
             # TrimGalore's (1.18) first, then pass 2's (5.1). Pass 2's input is

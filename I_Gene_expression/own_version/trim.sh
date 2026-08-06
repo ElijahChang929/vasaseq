@@ -177,7 +177,14 @@ fi
 # 2,000 real reads from cell 011: all poly-T gone, and the real reads come out
 # byte-identical to -n 3 (same 1,997 kept, same 198,535 bases) -- so this costs
 # nothing. `T{130}` also works but over-trims real reads by 12 bp.
-opts=(-m "${TRIM_MINLEN}" --trim-n -n 10 --poly-a)
+# --json writes the same report as stdout in machine-readable form, so
+# step2_report.py does not have to regex-scrape the text. That mattered: the
+# text parser tells pass 1 from pass 2 by COUNTING occurrences of "Total reads
+# processed:" (TrimGalore's cutadapt 1.18 prints one, pass 2's 5.1 prints
+# another), which silently breaks the moment either tool changes its wording.
+# The JSON is read by key. Text output is unchanged, so the old parser still
+# works and this is a pure addition.
+opts=(-m "${TRIM_MINLEN}" --trim-n -n 10 --poly-a --json "${stem}_cutadapt.json")
 [ -n "$TRIM_ADAPTER3" ] && opts+=(-a "rt=${TRIM_ADAPTER3};min_overlap=8")
 [ -n "$TRIM_POLYA"    ] && opts+=(-a "polyA=${TRIM_POLYA};min_overlap=10")
 [ -n "$TRIM_POLYG"    ] && opts+=(-a "polyG=${TRIM_POLYG};min_overlap=10")

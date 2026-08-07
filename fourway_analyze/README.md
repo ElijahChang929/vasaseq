@@ -5,6 +5,13 @@ FLASH-seq added as a fourth. **Nothing here writes into `demo_analyze/`.** That
 folder's tables and figures are the three-way result and stay as they are; this
 folder is a parallel tree with its own `tables/` and `figures/`.
 
+> **Two product trees, one set of scripts.** This one has the plate on the
+> published Ensembl 99 reference. **`../fourway_analyze_e116/`** has the same
+> figures with the plate re-mapped to Ensembl 116, so all four datasets share an
+> annotation — that is the tree to quote biotype and gene-detection numbers
+> from. Code root and product root are separate (`FOURWAY_OUT`, `PLATE_CELLS`);
+> there is no second copy of any script.
+
 ## The four
 
 | key | label | what a "unit" is | n | read len | reference |
@@ -63,13 +70,27 @@ other way because the fastq that feeds STAR can only be made once. The
 `.nsorted.all-ribo.bam` is kept so the `y` count stays recoverable from the same
 alignment without re-running bwa.
 
-### 3. Annotation release: E116 vs E99
+### 3. Annotation release: E116 vs E99 — **now measured, in `../fourway_analyze_e116/`**
 
-`plate` is mapped to the published mixed E99 reference and cannot be remapped to
-E116 without abandoning the paper cross-check that reference exists for. E116
-annotates **32,889 lncRNA genes against E99's 9,959 (3.3×)**, while every other
-biotype agrees within 8%. So any lncRNA comparison against `plate` is an
-annotation artefact, not biology, and is labelled as such rather than dropped.
+`plate` here is mapped to the published mixed E99 reference. E116 annotates
+**32,889 lncRNA genes against E99's 9,959 (3.3×)**, while every other biotype
+agrees within 8%, so in *this* folder a lncRNA comparison against `plate` mixes
+annotation with biology, and is labelled as such rather than dropped.
+
+This folder keeps E99 deliberately — it is what the paper cross-check needs.
+But the confounder itself has since been measured, from both directions:
+
+- **`scripts/00b_plate_e116.sh` re-maps the plate's 173 mouse wells to E116**,
+  putting all four datasets on literally the same index and BED. Products in
+  `../fourway_analyze_e116/` — read its README before quoting any biotype
+  number.
+- `flashseq_vasa/threeway/E99_MATCHED.md` does the opposite: our 16 cells
+  re-mapped to E99.
+
+They agree. Release explains roughly **half** the lncRNA gap — the plate moves
+2.66% → 5.49% on E116, still 1.5× below our 8.3–8.4% — and about **15%** of the
+structural gap. **The residual is real.** Neither direction alone shows that:
+one of them was needed to prove the other was not the whole story.
 
 ### 4. FLASH-seq has no UMI
 
